@@ -13,7 +13,7 @@ defmodule Neuron.Search.Agent do
 
   def run_page(handle, task, opts) do
     timeout = Keyword.get(opts, :timeout, 45_000)
-    page = Pinocchio.Browser.new_page(handle.session)
+    page = Neuron.Browser.Fleet.Target.open(handle.session)
 
     try do
       _ = Pinocchio.Browser.visit(page, task.url)
@@ -37,7 +37,7 @@ defmodule Neuron.Search.Agent do
         {:error, reason} -> {:error, reason}
       end
     after
-      _ = Pinocchio.Browser.close_page(page)
+      Neuron.Browser.Fleet.Target.close(page)
     end
   end
 
