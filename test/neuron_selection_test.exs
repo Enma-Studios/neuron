@@ -133,6 +133,52 @@ defmodule Neuron.SelectionTest do
            ) == nil
   end
 
+  test "an alternate approved role and geography are full eligibility matches" do
+    campaign = %{
+      seller_profile: %{domain: "seller.example"},
+      target_profile: %{
+        markets: [],
+        roles: ["CISO", "CTO", "Head of Security"],
+        geography: ["Nepal", "India", "Bangladesh"],
+        exclusions: []
+      }
+    }
+
+    now = DateTime.to_iso8601(DateTime.utc_now())
+
+    claims =
+      for {predicate, value} <- %{
+            "name" => "Asha",
+            "title" => "CTO",
+            "location" => "India",
+            "employer" => "buyer.example",
+            "email" => "asha@buyer.example"
+          },
+          do: %{
+            "predicate" => predicate,
+            "claim_value" => value,
+            "excerpt" => value,
+            "url" => "https://buyer.example/team",
+            "observed_at" => now,
+            "authority" => 1.0
+          }
+
+    lead =
+      Neuron.Selection.score(
+        %{
+          "uid" => "0x456",
+          "external_id" => "asha",
+          "embedding" => [1.0],
+          "assertions" => claims
+        },
+        campaign,
+        [1.0]
+      )
+
+    assert lead.score_breakdown.role == 1.0
+    assert lead.score_breakdown.geography == 1.0
+  end
+
   test "reservations suppress repeats per campaign and are idempotent for the owning run" do
     campaign = Ecto.UUID.generate()
     {:ok, run} = Neuron.start_run(Neuron.Coordinator.Default, %{})

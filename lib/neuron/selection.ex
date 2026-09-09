@@ -231,7 +231,10 @@ defmodule Neuron.Selection do
 
   def cosine(_, _), do: 0.0
   defp match_terms([], _), do: 1.0
-  defp match_terms(terms, text), do: Enum.count(terms, &contains?(text, &1)) / length(terms)
+
+  defp match_terms(terms, text),
+    do: if(Enum.any?(terms, &contains?(text, &1)), do: 1.0, else: 0.0)
+
   defp contains?(text, term), do: String.contains?(String.downcase(text), String.downcase(term))
   defp freshness(nil, _), do: 0.0
 
