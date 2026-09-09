@@ -1,0 +1,10 @@
+documents: [uid] @reverse .
+claim_value: string @index(fulltext) .
+authority: float @index(float) .
+assertion_kind: string @index(exact) .
+current_claims: [uid] @reverse .
+knowledge_json: string .
+knowledge_text: string @index(fulltext) .
+observed_at: datetime @index(hour) .
+fetched_at: datetime @index(hour) .
+published_at: datetime @index(hour) .

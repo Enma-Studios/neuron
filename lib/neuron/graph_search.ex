@@ -44,5 +44,15 @@ defmodule Neuron.GraphSearch do
     end)
   end
 
-  defp fuse(left, right), do: %{lexical: left, semantic: right, strategy: :reciprocal_rank_fusion}
+  def fuse(left, right) do
+    [left["results"] || [], right["results"] || []]
+    |> Enum.flat_map(fn rows -> Enum.with_index(rows, 1) end)
+    |> Enum.reduce(%{}, fn {row, rank}, acc ->
+      Map.update(acc, row["uid"], Map.put(row, "rrf_score", 1 / (60 + rank)), fn existing ->
+        Map.update!(existing, "rrf_score", &(&1 + 1 / (60 + rank)))
+      end)
+    end)
+    |> Map.values()
+    |> Enum.sort_by(&{-&1["rrf_score"], &1["uid"]})
+  end
 end

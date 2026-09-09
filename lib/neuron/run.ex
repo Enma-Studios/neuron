@@ -117,6 +117,18 @@ defmodule Neuron.StageWorker do
             })
           end
 
+        {:wait, seconds} when is_integer(seconds) and seconds > 0 ->
+          {:snooze, seconds}
+
+        {:goto, next_stage, output} ->
+          index = Enum.find_index(stages, &(&1 == next_stage))
+          true = is_integer(index)
+
+          Neuron.RunWorker.advance(id, version, :progress, %{
+            stage_data: output,
+            stage_index: index
+          })
+
         {:error, reason} when job.attempt < job.max_attempts ->
           {:error, reason}
 
