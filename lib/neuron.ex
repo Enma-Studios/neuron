@@ -12,6 +12,20 @@ defmodule Neuron do
     end
   end
 
+  @doc "Start a coordinator and wait for its terminal result, including lead data."
+  def run(profile \\ Neuron.Coordinator.default(), input, opts \\ []) do
+    with {:ok, id} <- start_run(profile, input, opts),
+         {:ok, response} <- await_run(id, Keyword.get(opts, :timeout, 120_000)) do
+      {:ok, Map.put(response, :id, id)}
+    end
+  end
+
+  @doc "Wait for a durable run and return its result instead of only its process id."
+  def await_run(id, timeout \\ 120_000) when is_binary(id) and is_integer(timeout) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    await_loop(id, deadline)
+  end
+
   def get_run(id), do: Neuron.Run.call(id, :get)
 
   def list_runs do
@@ -44,6 +58,55 @@ defmodule Neuron do
 
   def cancel_run(id), do: Neuron.Run.call(id, :cancel)
   def provide_run(id, input) when is_map(input), do: Neuron.Run.call(id, {:provide, input})
+
+  defp await_loop(id, deadline) do
+    response = persisted_or_live_run(id)
+
+    cond do
+      is_map(response) and response.status == :complete ->
+        {:ok, response}
+
+      is_map(response) and response.status == :needs_input ->
+        {:needs_input, response}
+
+      is_map(response) and response.status in [:failed, :cancelled] ->
+        {:error, response}
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        {:error, :timeout}
+
+      true ->
+        Process.sleep(25)
+        await_loop(id, deadline)
+    end
+  end
+
+  defp persisted_or_live_run(id) do
+    live =
+      try do
+        get_run(id)
+      catch
+        :exit, _ -> nil
+      end
+
+    live ||
+      case Neuron.Storage.get_run(id) do
+        {:ok, {:neuron_run, ^id, profile, input, status, inserted, updated, result, error}} ->
+          %{
+            id: id,
+            profile: profile,
+            input: input,
+            status: status,
+            inserted_at: inserted,
+            updated_at: updated,
+            result: result,
+            error: error
+          }
+
+        _ ->
+          nil
+      end
+  end
 
   def spawn_agent(run_id, role, worker \\ Neuron.Agent.Echo, input, opts \\ []) do
     id = Keyword.get(opts, :id, random_id())

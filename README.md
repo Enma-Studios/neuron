@@ -207,6 +207,20 @@ Neuron.cancel_run(run_id)
 Neuron.resume_run(run_id)
 ```
 
+For callers that need the lead payload in the function return, use the
+blocking API. It returns the terminal run envelope and exposes campaign result
+fields such as `leads` at the top level as well as under `result`:
+
+```elixir
+{:ok, response} = Neuron.run(Neuron.Coordinator.Campaign, campaign, timeout: 300_000)
+response.leads
+response.result.leads
+```
+
+`Neuron.await_run/2` provides the same envelope when a run was started with
+`Neuron.start_run/3`. `Neuron.get_run/1` remains the non-blocking inspection
+API and returns the same exposed fields for completed runs.
+
 A run moves through `:queued`, `:planning`, `:executing`, and either
 `:complete`, `:failed`, or `:cancelled`. Run and operation state is persisted
 before and after side effects.

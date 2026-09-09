@@ -173,11 +173,26 @@ defmodule Neuron.Run do
   defp operation_id(data), do: "#{data.id}:coordinator:1"
 
   defp snapshot(data, status),
-    do: %{
-      id: data.id,
-      status: status,
-      profile: data.profile,
-      result: data.result,
-      error: data.error
-    }
+    do:
+      %{
+        id: data.id,
+        status: status,
+        profile: data.profile,
+        result: data.result,
+        error: data.error
+      }
+      |> expose_result_fields(data.result)
+
+  defp expose_result_fields(snapshot, result) when is_map(result) do
+    Enum.reduce(
+      [:leads, :campaign, :target_profile, :organization, :people, :posts],
+      snapshot,
+      fn key, acc ->
+        value = Map.get(result, key, Map.get(result, Atom.to_string(key)))
+        if is_nil(value), do: acc, else: Map.put(acc, key, value)
+      end
+    )
+  end
+
+  defp expose_result_fields(snapshot, _result), do: snapshot
 end

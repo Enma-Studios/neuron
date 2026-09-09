@@ -28,4 +28,15 @@ defmodule Neuron.RunTest do
              key == outbox_id
            end)
   end
+
+  test "blocking run returns lead fields at the response level" do
+    id = "run-result-#{System.unique_integer([:positive])}"
+
+    assert {:ok, response} =
+             Neuron.run(Neuron.Coordinator.Default, %{leads: [%{name: "Ada"}]}, id: id)
+
+    assert response.id == id
+    assert response.result.leads == [%{name: "Ada"}]
+    assert response.leads == [%{name: "Ada"}]
+  end
 end
