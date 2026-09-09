@@ -71,6 +71,17 @@ defmodule Neuron.Telemetry do
     end
   end
 
+  def transcript(opts, event, payload) do
+    path = Keyword.get(opts, :session_transcript) || System.get_env("NEURON_SESSION_TRANSCRIPT")
+
+    if is_binary(path) and path != "" do
+      line = "#{DateTime.utc_now()} #{event} #{inspect(payload, limit: :infinity)}\n"
+      File.write!(path, line, [:append, :binary])
+    end
+
+    :ok
+  end
+
   defp normalize(metadata), do: Map.new(metadata)
   defp trace_id, do: :crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower)
 end

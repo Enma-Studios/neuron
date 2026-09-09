@@ -52,14 +52,11 @@ defmodule Neuron.Outbox do
       Map.merge(metadata, %{kind: kind, payload: Neuron.Telemetry.summarize(payload)})
     )
 
+    facts = graph_facts(kind, id, run_id, payload)
+
     result =
       Neuron.Graph.upsert(
-        %{
-          "uid" => "_:#{id}",
-          "type" => to_string(kind),
-          "run_id" => run_id,
-          "payload" => inspect(payload)
-        },
+        facts,
         run_id: run_id,
         operation_id: id,
         task_id: "outbox:publish",
@@ -75,4 +72,30 @@ defmodule Neuron.Outbox do
         _ = Neuron.Storage.update_outbox(id, :pending, attempts + 1, metadata)
     end
   end
+
+  defp graph_facts(:research_bundle, id, run_id, payload) when is_map(payload) do
+    payload
+    |> Map.get(:graph, Map.get(payload, "graph"))
+    |> case do
+      facts when is_map(facts) -> facts
+      _ -> generic_facts(id, run_id, payload)
+    end
+  end
+
+  defp graph_facts(:campaign, id, run_id, payload) when is_map(payload) do
+    case Map.get(payload, :graph, Map.get(payload, "graph")) do
+      facts when is_map(facts) -> facts
+      _ -> generic_facts(id, run_id, payload)
+    end
+  end
+
+  defp graph_facts(_kind, id, run_id, payload), do: generic_facts(id, run_id, payload)
+
+  defp generic_facts(id, run_id, payload),
+    do: %{
+      "uid" => "_:#{id}",
+      "type" => "outbox",
+      "run_id" => run_id,
+      "payload" => inspect(payload)
+    }
 end

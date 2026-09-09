@@ -23,6 +23,7 @@ defmodule Neuron.MixProject do
   defp deps do
     base_deps = [
       {:jason, "~> 1.4"},
+      {:ecto, "~> 3.12"},
       {:telemetry, "~> 1.3"},
       {:req, "~> 0.5"},
       {:dlex, github: "Enma-Studios/dlex", branch: "master", optional: true},

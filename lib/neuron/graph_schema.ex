@@ -1,7 +1,7 @@
 defmodule Neuron.Graph.Schema do
   @moduledoc "Versioned Dgraph predicates for the shared knowledge graph."
 
-  @version 2
+  @version 4
 
   def version, do: @version
 
@@ -18,6 +18,7 @@ defmodule Neuron.Graph.Schema do
       title: string
       fetched_at: datetime
       content_hash: string
+      snapshot: uid
     }
     type Snapshot {
       markdown: string
@@ -33,6 +34,8 @@ defmodule Neuron.Graph.Schema do
       predicate: string
       confidence: float
       observed_at: datetime
+      excerpt: string
+      sources: [uid]
     }
     type Organization {
       name: string
@@ -40,6 +43,7 @@ defmodule Neuron.Graph.Schema do
       description: string
       industry: string
       organization_type: string
+      contact_email: string
       founded_at: datetime
       headquarters: uid
       geographies: [uid]
@@ -51,11 +55,13 @@ defmodule Neuron.Graph.Schema do
       leniencies: [uid]
       sources: [uid]
       assertions: [uid]
+      leads: [uid]
       embedding: float32vector
     }
     type Person {
       name: string
       title: string
+      profile_url: string
       bio: string
       location: uid
       employer: uid
@@ -66,6 +72,7 @@ defmodule Neuron.Graph.Schema do
       leniencies: [uid]
       sources: [uid]
       assertions: [uid]
+      leads: [uid]
       embedding: float32vector
     }
     type SocialAccount {
@@ -146,6 +153,7 @@ defmodule Neuron.Graph.Schema do
     type Campaign {
       name: string
       objective: string
+      leads: [uid]
       fit_profiles: [uid]
       target_organizations: [uid]
       target_people: [uid]
@@ -167,6 +175,18 @@ defmodule Neuron.Graph.Schema do
       exclusions: [uid]
       embedding: float32vector
     }
+    type Lead {
+      name: string
+      person: uid
+      organization: uid
+      fit_score: float
+      reason: string
+      email_subject: string
+      email_body: string
+      email: string
+      sources: [uid]
+      target_profile: string
+    }
 
     name: string @index(term, trigram) .
     domain: string @index(exact) .
@@ -174,6 +194,7 @@ defmodule Neuron.Graph.Schema do
     description: string @index(fulltext) .
     industry: string @index(term, trigram) .
     organization_type: string @index(term) .
+    contact_email: string @index(exact) .
     founded_at: datetime .
     headquarters: uid @reverse .
     geographies: [uid] @reverse .
@@ -186,6 +207,7 @@ defmodule Neuron.Graph.Schema do
     leniencies: [uid] @reverse .
     sources: [uid] @reverse .
     assertions: [uid] @reverse .
+    leads: [uid] @reverse .
     title: string @index(term, trigram) .
     bio: string @index(fulltext) .
     location: uid @reverse .
@@ -228,6 +250,13 @@ defmodule Neuron.Graph.Schema do
     excluded_requirements: [uid] @reverse .
     exclusions: [uid] @reverse .
     preferred_geographies: [uid] @reverse .
+    person: uid @reverse .
+    fit_score: float @index(float) .
+    reason: string @index(fulltext) .
+    email_subject: string .
+    email_body: string @index(fulltext) .
+    email: string @index(exact) .
+    target_profile: string @index(fulltext) .
     markdown: string @index(fulltext) .
     content_hash: string @index(exact) .
     extraction_version: int .
@@ -237,6 +266,7 @@ defmodule Neuron.Graph.Schema do
     predicate: string .
     embedding: float32vector @index(hnsw(metric:"cosine")) .
     fetched_at: datetime .
+    snapshot: uid @reverse .
     """
   end
 
