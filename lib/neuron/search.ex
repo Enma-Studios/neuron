@@ -23,15 +23,57 @@ defmodule Neuron.Search.DuckDuckGo do
       Neuron.Telemetry.trace_metadata(browser_opts)
       |> Map.put(:query, Neuron.Telemetry.summarize(query)),
       fn ->
-        with {:ok, page} <- Neuron.Browser.fetch(url, browser_opts),
-             html when is_binary(html) <- page[:html] || page["html"] do
-          {:ok, parse(html)}
-        else
-          nil -> {:error, :search_returned_no_html}
-          {:error, reason} -> {:error, reason}
-        end
+        search_duckduckgo(url, query, browser_opts)
       end
     )
+  end
+
+  defp search_duckduckgo(url, query, opts) do
+    with {:ok, page} <- Neuron.Browser.fetch(url, opts),
+         html when is_binary(html) <- page[:html] || page["html"],
+         false <- challenged?(html) do
+      {:ok, parse(html)}
+    else
+      true -> fallback_search(url, query, opts, :duckduckgo_challenge)
+      nil -> fallback_search(url, query, opts, :search_returned_no_html)
+      {:error, reason} -> fallback_search(url, query, opts, reason)
+    end
+  end
+
+  defp fallback_search(url, query, opts, reason) do
+    Neuron.Telemetry.emit(
+      [:search, :fallback],
+      Neuron.Telemetry.trace_metadata(opts) |> Map.put(:reason, inspect(reason))
+    )
+
+    with {:ok, page} <- Neuron.Browser.Local.fetch(url, opts),
+         html when is_binary(html) <- page[:html] || page["html"],
+         false <- challenged?(html) do
+      {:ok, parse(html)}
+    else
+      _ -> model_search(query, opts)
+    end
+  end
+
+  defp model_search(query, opts) do
+    provider =
+      Keyword.get(opts, :model_provider, Application.fetch_env!(:neuron, :model)[:provider])
+
+    with {:ok, %{"search_result" => results}} <- provider.web_search(query, opts) do
+      results
+      |> Enum.map(fn result ->
+        %{
+          title: result["title"] || "",
+          url: result["link"] || result["url"] || "",
+          snippet: result["content"] || result["snippet"] || ""
+        }
+      end)
+      |> Enum.filter(&String.starts_with?(&1.url, ["https://", "http://"]))
+      |> then(&{:ok, &1})
+    else
+      {:error, fallback_reason} -> {:error, {:search_unavailable, reason: fallback_reason}}
+      _ -> {:error, {:search_unavailable, reason: :invalid_model_search_response}}
+    end
   end
 
   def parse(html) when is_binary(html) do
@@ -56,6 +98,10 @@ defmodule Neuron.Search.DuckDuckGo do
     end)
     |> Enum.reject(&(&1.url == ""))
     |> Enum.uniq_by(& &1.url)
+  end
+
+  defp challenged?(html) do
+    String.contains?(html, ["anomaly-modal", "challenge-form", "bots use DuckDuckGo"])
   end
 
   defp normalize_url(href) do
