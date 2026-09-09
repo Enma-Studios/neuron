@@ -53,7 +53,7 @@ Alternatively, set `start_repo: true` and `start_oban: true` and put the Postgre
 | `ZAI_API_KEY` | Required for live model calls |
 | `ZAI_BASE_URL` | Production override for `https://api.z.ai/api/paas/v4` |
 | `BROWSER_USE_API_KEY` | Required for Browser Use search/browsing |
-| `BROWSER_USE_PROFILE_ID` | Required; Browser Use profile sent to new sessions |
+| `BROWSER_USE_PROFILE_ID` | Optional; Browser Use profile sent to new sessions when set |
 | `CHROMIUM` | Chromium executable path; common system paths are detected |
 | `NEURON_BROWSER_POOL_SIZE` | `4` in production |
 | `NEURON_EMBEDDING_ENDPOINT` | Required when using the supplied HTTP embedding provider |

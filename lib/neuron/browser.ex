@@ -108,11 +108,7 @@ defmodule Neuron.Browser.BrowserUse do
         config[:profile_id] || System.get_env("BROWSER_USE_PROFILE_ID")
       )
 
-    if is_binary(id) and id != "" do
-      id
-    else
-      raise ArgumentError, "BROWSER_USE_PROFILE_ID must be configured"
-    end
+    id
   end
 
   @impl true
@@ -140,7 +136,7 @@ defmodule Neuron.Browser.BrowserUse do
       |> Map.new()
       |> Map.put(:api_key, key)
       |> Map.put(:api_endpoint, config[:endpoint] || config[:api_endpoint])
-      |> Map.put(:profile_id, profile_id)
+      |> maybe_put_profile_id(profile_id)
 
     Neuron.Telemetry.emit(
       [:browser, :session],
@@ -177,4 +173,10 @@ defmodule Neuron.Browser.BrowserUse do
       {:error, reason} -> {:error, {:browser_use_start, reason}}
     end
   end
+
+  defp maybe_put_profile_id(config, id) when is_binary(id) and id != "" do
+    Map.put(config, :profile_id, id)
+  end
+
+  defp maybe_put_profile_id(config, _id), do: config
 end
