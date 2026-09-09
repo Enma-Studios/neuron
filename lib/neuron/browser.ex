@@ -124,11 +124,62 @@ defmodule Neuron.Browser.BrowserUse do
         {:error, :req_unavailable}
 
       true ->
-        fetch_with_pinocchio(url, config, key, opts)
+        fetch_with_open_session(url, opts)
     end
   end
 
-  defp fetch_with_pinocchio(url, config, key, opts) do
+  @doc """
+  Provision one cloud browser session for multi-page use. The caller owns
+  the returned handle and must release it with `close_session/1`.
+  """
+  def open_session(opts \\ []) do
+    config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
+    key = config[:api_key] || System.get_env("BROWSER_USE_API_KEY")
+
+    cond do
+      is_nil(key) or key == "" ->
+        {:error, :browser_use_not_configured}
+
+      not Code.ensure_loaded?(Req) ->
+        {:error, :req_unavailable}
+
+      true ->
+        open_pinocchio_session(config, key, opts)
+    end
+  end
+
+  def close_session(%{pid: pid, prepared: prepared}) do
+    _ = Pinocchio.Session.release(pid)
+    _ = Pinocchio.Providers.BrowserUse.stop(prepared[:provider_session])
+    Process.exit(pid, :shutdown)
+    :ok
+  end
+
+  defp fetch_with_open_session(url, opts) do
+    with {:ok, handle} <- open_session(opts) do
+      session = handle.session
+
+      try do
+        _ =
+          Pinocchio.Browser.visit_and_wait(session, url,
+            timeout: Keyword.get(opts, :timeout, 60_000)
+          )
+
+        {:ok,
+         %{
+           url: Pinocchio.Browser.current_url(session),
+           title: Pinocchio.Browser.page_title(session),
+           html: Pinocchio.Browser.page_source(session)
+         }}
+      rescue
+        error -> {:error, {:browser_use_error, Exception.message(error)}}
+      after
+        close_session(handle)
+      end
+    end
+  end
+
+  defp open_pinocchio_session(config, key, opts) do
     profile_id = profile_id(opts)
 
     browser_config =
@@ -148,27 +199,14 @@ defmodule Neuron.Browser.BrowserUse do
          {:ok, pid} <- Pinocchio.Session.start_link(browser: prepared),
          :ok <- Pinocchio.Session.acquire(pid, self()) do
       Process.unlink(pid)
-      session = %Pinocchio.Session{pid: pid}
 
-      try do
-        _ =
-          Pinocchio.Browser.visit_and_wait(session, url,
-            timeout: Keyword.get(opts, :timeout, 60_000)
-          )
-
-        {:ok,
-         %{
-           url: Pinocchio.Browser.current_url(session),
-           title: Pinocchio.Browser.page_title(session),
-           html: Pinocchio.Browser.page_source(session)
-         }}
-      rescue
-        error -> {:error, {:browser_use_error, Exception.message(error)}}
-      after
-        _ = Pinocchio.Session.release(pid)
-        _ = Pinocchio.Providers.BrowserUse.stop(prepared[:provider_session])
-        Process.exit(pid, :shutdown)
-      end
+      {:ok,
+       %{
+         pid: pid,
+         provider: :browser_use,
+         session: %Pinocchio.Session{pid: pid},
+         prepared: prepared
+       }}
     else
       {:error, reason} -> {:error, {:browser_use_start, reason}}
     end
