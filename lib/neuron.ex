@@ -14,6 +14,20 @@ defmodule Neuron do
 
   def get_run(id), do: Neuron.Run.call(id, :get)
 
+  def list_runs do
+    case Neuron.Storage.list_runs() do
+      {:atomic, runs} -> Enum.map(runs, fn {:neuron_run, id, profile, _input, status, inserted, updated, result, error} -> %{id: id, profile: profile, status: status, inserted_at: inserted, updated_at: updated, result: result, error: error} end)
+      error -> error
+    end
+  end
+
+  def events(id) do
+    case Neuron.Storage.events(id) do
+      {:atomic, events} -> events
+      error -> error
+    end
+  end
+
   def cancel_run(id), do: Neuron.Run.call(id, :cancel)
 
   def resume_run(id) do

@@ -27,6 +27,9 @@ defmodule Neuron.Storage do
 
   def put_run(run), do: write(:neuron_run, run)
   def get_run(id), do: read(:neuron_run, id)
+  def list_runs do
+    transaction(fn -> :mnesia.match_object({:neuron_run, :_, :_, :_, :_, :_, :_, :_, :_}) end, %{task_id: "runs:list"})
+  end
   def put_agent(agent), do: write(:neuron_agent, agent)
   def put_operation(operation), do: write(:neuron_operation, operation)
   def put_outbox(entry), do: write(:neuron_outbox, entry)
@@ -122,7 +125,7 @@ defmodule Neuron.Storage do
   defp create_tables(config) do
     copy_key = if config[:backend] == :rocksdb and Code.ensure_loaded?(:mnesia_rocksdb), do: :rocksdb_copies, else: :disc_copies
 
-    Enum.reduce_while(@tables, :ok, fn {table, attributes}, :ok ->
+    result = Enum.reduce_while(@tables, :ok, fn {table, attributes}, :ok ->
       opts = [{:attributes, attributes}, {copy_key, [node()]}]
 
       case :mnesia.create_table(table, opts) do
@@ -131,6 +134,13 @@ defmodule Neuron.Storage do
         {:aborted, reason} -> {:halt, {:error, {:create_table, table, reason}}}
       end
     end)
+
+    with :ok <- result do
+      case :mnesia.wait_for_tables(Enum.map(@tables, &elem(&1, 0)), 30_000) do
+        :ok -> :ok
+        other -> {:error, {:wait_for_tables, other}}
+      end
+    end
   end
 
   defp write(_table, record) do

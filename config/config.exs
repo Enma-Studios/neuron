@@ -1,7 +1,8 @@
 import Config
 
 config :neuron,
-  storage: [data_dir: "priv/neuron_data", backend: :mnesia],
+  storage: [data_dir: "priv/neuron_data", backend: :rocksdb],
+  dgraph: [endpoint: "localhost:9080"],
   model: [provider: Neuron.Model.ZAI, model: "glm-5.3-flash", base_url: "https://api.z.ai/api/paas/v4"],
   embeddings: [provider: Neuron.Embedding.Local, model: "BAAI/bge-small-en-v1.5", dimensions: 384],
   browser: [preferred: :local, local: [], browser_use: []],

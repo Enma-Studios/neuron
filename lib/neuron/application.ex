@@ -9,7 +9,8 @@ defmodule Neuron.Application do
       {Neuron.Storage, []},
       {Neuron.Outbox, []},
       {Neuron.RunRegistry, []},
-      {Neuron.RunSupervisor, []}
+      {Neuron.RunSupervisor, []},
+      {Neuron.Recovery, []}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Neuron.Supervisor)

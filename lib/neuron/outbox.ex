@@ -20,7 +20,13 @@ defmodule Neuron.Outbox do
 
   @impl true
   def handle_info(:publish, state) do
-    Enum.each(Neuron.Storage.pending_outbox(), &publish/1)
+    pending =
+      case Neuron.Storage.pending_outbox() do
+        {:atomic, entries} -> entries
+        _ -> []
+      end
+
+    Enum.each(pending, &publish/1)
     Process.send_after(self(), :publish, state.retry_ms)
     {:noreply, state}
   end
