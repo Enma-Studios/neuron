@@ -43,6 +43,7 @@ defmodule Neuron do
   end
 
   def cancel_run(id), do: Neuron.Run.call(id, :cancel)
+  def provide_run(id, input) when is_map(input), do: Neuron.Run.call(id, {:provide, input})
 
   def spawn_agent(run_id, role, worker \\ Neuron.Agent.Echo, input, opts \\ []) do
     id = Keyword.get(opts, :id, random_id())

@@ -133,6 +133,67 @@ For a production release, provide `ZAI_API_KEY`, `BROWSER_USE_API_KEY`,
 
 ## Public API
 
+### Campaign intake and lead targets
+
+Campaigns are the operating surface for go-to-market work. The intake contract
+has eight questions at most: organization, field, offer, target roles, target
+organizations, geography, exclusions, and the requested unique lead count.
+`Neuron.Campaign.questions/0` returns the questions for a controller or chat
+surface, while `Neuron.Campaign.question_prompt/1` returns only the unanswered
+ones.
+
+If a website URL is supplied, Neuron first fetches it with the normal local
+Chromium-first browser policy, converts the page to Markdown, and asks the
+configured Z.AI `glm-5.3-flash` provider to extract answers. Unknown answers are
+returned as prompts; they are never invented. The caller can resume intake by
+passing the answers back to `Neuron.Campaign.intake/2`:
+
+```elixir
+{:needs_input, %{questions: questions, partial: partial}} =
+  Neuron.Campaign.intake(%{url: "https://example.com"})
+
+{:ok, campaign} =
+  Neuron.Campaign.intake(%{
+    answers: %{
+      organization: "example.com",
+      field: "B2B cybersecurity",
+      offer: "Security assessment partnerships",
+      target_roles: ["CTO", "VP Engineering"],
+      geography: ["US", "Canada"],
+      lead_count: 3
+    }
+  })
+```
+
+The target counter is owned by `Neuron.Campaign`, outside the research model.
+`Neuron.Campaign.run/2` starts independent research attempts, deduplicates by
+company email, profile URL, or person name, and stops when `lead_count` unique
+leads are collected. `max_attempts` bounds retries; failure returns the
+partial leads and per-attempt errors. To run it under `gen_statem`, use
+`Neuron.Coordinator.Campaign`:
+
+```elixir
+{:ok, run_id} =
+  Neuron.start_run(Neuron.Coordinator.Campaign, campaign,
+    id: "campaign-nyx",
+    max_attempts: 4,
+    session_transcript: "/tmp/campaign-nyx-transcript"
+  )
+```
+
+When the URL or supplied answers leave required fields unknown, the coordinator
+enters `:needs_input` and returns the bounded question list. Supply the answers
+without starting a second process:
+
+```elixir
+Neuron.get_run("campaign-nyx")
+Neuron.provide_run("campaign-nyx", %{field: "cybersecurity", lead_count: 3})
+```
+
+The completed result includes `campaign_run_id`, `target_count`, `leads`, and
+the attempt failures. Each attempt has its own run and outbox identity while
+remaining correlated to the parent campaign run in telemetry.
+
 ### Start and inspect a run
 
 ```elixir

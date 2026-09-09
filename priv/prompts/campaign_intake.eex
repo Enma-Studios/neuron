@@ -1,0 +1,8 @@
+Extract a campaign brief from this official organization page. Return JSON only with these keys:
+{"organization":"", "domain":"", "field":"", "offer":"", "target_roles":[], "target_organizations":[], "geography":[], "exclusions":[], "lead_count": null, "campaigns":[]}
+
+Use only facts supported by the page. Leave unknown fields empty; do not invent contacts, people, locations, or targets. The page URL is <%= url %>.
+If the page clearly describes more than one distinct go-to-market motion, put each complete brief in `campaigns` and leave the top-level brief empty. Never create proposals from speculation.
+
+Evidence:
+<%= evidence %>

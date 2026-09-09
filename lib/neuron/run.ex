@@ -55,6 +55,11 @@ defmodule Neuron.Run do
         persist_status(data, :executing)
         {:next_state, :executing, data, [{:next_event, :internal, :execute}]}
 
+      {:needs_input, details} ->
+        data = %{data | result: details}
+        persist_status(data, :needs_input, details, nil)
+        {:next_state, :needs_input, data}
+
       {:error, reason} ->
         fail(data, reason)
     end
@@ -64,6 +69,17 @@ defmodule Neuron.Run do
     do: {:keep_state_and_data, [{:reply, from, snapshot(data, :planning)}]}
 
   def planning({:call, from}, :cancel, data), do: cancel(from, data)
+
+  def needs_input({:call, from}, :get, data),
+    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :needs_input)}]}
+
+  def needs_input({:call, from}, {:provide, input}, data) when is_map(input) do
+    data = %{data | input: Map.merge(data.input || %{}, input), result: nil, error: nil}
+    persist_status(data, :planning)
+    {:next_state, :planning, data, [{:next_event, :internal, :run_plan}, {:reply, from, :ok}]}
+  end
+
+  def needs_input({:call, from}, :cancel, data), do: cancel(from, data)
 
   def executing(:internal, :execute, data) do
     operation = operation_id(data)
