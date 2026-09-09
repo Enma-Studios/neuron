@@ -2,7 +2,10 @@ import Config
 
 config :neuron,
   storage: [data_dir: "priv/neuron_data", backend: :rocksdb],
-  dgraph: [endpoint: "localhost:9080"],
+  dgraph: [
+    endpoint: System.get_env("NEURON_DGRAPH_ENDPOINT", "localhost:9080"),
+    enabled: System.get_env("NEURON_DGRAPH_ENABLED", "true") == "true"
+  ],
   model: [
     provider: Neuron.Model.ZAI,
     model: "glm-5.3-flash",
