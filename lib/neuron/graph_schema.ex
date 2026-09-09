@@ -1,13 +1,15 @@
 defmodule Neuron.Graph.Schema do
   @moduledoc "Versioned Dgraph predicates for the shared knowledge graph."
 
-  @version 4
+  @version 5
 
   def version, do: @version
 
   def definition do
     """
+    external_id: string @index(exact) @upsert .
     type Entity {
+      external_id: string
       name: string
       domain: string
       profile_url: string
@@ -278,13 +280,6 @@ defmodule Neuron.Graph.Schema do
 
     conn = connection || Application.get_env(:neuron, :dgraph, [])[:connection]
 
-    if conn && Code.ensure_loaded?(Dlex) do
-      case apply(Dlex, :alter, [conn, definition()]) do
-        {:ok, _} = ok -> ok
-        error -> error
-      end
-    else
-      {:error, :dgraph_not_configured}
-    end
+    Dlex.alter(conn, definition())
   end
 end

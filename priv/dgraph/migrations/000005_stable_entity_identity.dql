@@ -1,0 +1,1 @@
+external_id: string @index(exact) @upsert .
