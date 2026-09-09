@@ -14,7 +14,6 @@ if config_env() == :prod do
     ],
     telemetry: [capture_payloads: System.get_env("NEURON_CAPTURE_PAYLOADS", "false") == "true"],
     browser: [
-      local: [executable: System.get_env("CHROMIUM", "/usr/bin/chromium")],
       fleet: [
         sessions: String.to_integer(System.get_env("NEURON_FLEET_SESSIONS", "2")),
         pages_per_session: String.to_integer(System.get_env("NEURON_FLEET_PAGES", "8"))
@@ -26,20 +25,4 @@ if config_env() == :prod do
     ]
 
   config :neuron, Neuron.Repo, database: System.fetch_env!("NEURON_DATABASE")
-
-  chromium =
-    System.get_env("CHROMIUM") ||
-      Enum.find(
-        ["/usr/bin/chromium", "/snap/bin/chromium", "/usr/bin/chromium-browser"],
-        &File.exists?/1
-      )
-
-  config :pinocchio,
-    browser:
-      (if chromium do
-         [executable: chromium, args: ["--headless=new", "--disable-dev-shm-usage"]]
-       else
-         [executable: nil, endpoint: nil, provider: nil]
-       end),
-    pool: [size: String.to_integer(System.get_env("NEURON_BROWSER_POOL_SIZE", "4"))]
 end

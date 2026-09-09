@@ -1,16 +1,9 @@
 defmodule Neuron.Browser do
-  @moduledoc "Provider-neutral browser worker contract."
+  @moduledoc "Browser Use cloud browsing contract."
   @callback fetch(url :: String.t(), opts :: keyword()) :: {:ok, map()} | {:error, term()}
 
   def fetch(url, opts \\ []) do
-    preferred =
-      Keyword.get(
-        opts,
-        :provider,
-        Application.get_env(:neuron, :browser, [])[:preferred] || :local
-      )
-
-    providers = if preferred == :local, do: [:local, :browser_use], else: [preferred, :local]
+    providers = [Keyword.get(opts, :provider, :browser_use)]
 
     Neuron.Telemetry.span(
       [:browser, :fetch],
@@ -48,50 +41,8 @@ defmodule Neuron.Browser do
     end
   end
 
-  defp provider_module(:local), do: Neuron.Browser.Local
   defp provider_module(:browser_use), do: Neuron.Browser.BrowserUse
   defp provider_module(module) when is_atom(module), do: module
-end
-
-defmodule Neuron.Browser.Local do
-  @behaviour Neuron.Browser
-  @impl true
-  def fetch(url, opts) do
-    configured? =
-      Application.get_env(:pinocchio, :browser, [])
-      |> Map.new()
-      |> then(&(&1[:executable] || &1[:endpoint]))
-
-    if Code.ensure_loaded?(Pinocchio.Browser) and configured? do
-      case apply(Pinocchio.Browser, :start_session, []) do
-        {:ok, session} ->
-          try do
-            _ =
-              apply(Pinocchio.Browser, :visit_and_wait, [
-                session,
-                url,
-                [timeout: Keyword.get(opts, :timeout, 30_000)]
-              ])
-
-            {:ok,
-             %{
-               url: apply(Pinocchio.Browser, :current_url, [session]),
-               title: apply(Pinocchio.Browser, :page_title, [session]),
-               html: apply(Pinocchio.Browser, :page_source, [session])
-             }}
-          rescue
-            error -> {:error, {:local_browser_error, Exception.message(error)}}
-          after
-            _ = apply(Pinocchio.Browser, :end_session, [session])
-          end
-
-        {:error, reason} ->
-          {:error, {:local_browser_start, reason}}
-      end
-    else
-      {:error, :pinocchio_not_configured}
-    end
-  end
 end
 
 defmodule Neuron.Browser.BrowserUse do

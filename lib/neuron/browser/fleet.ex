@@ -12,7 +12,7 @@ defmodule Neuron.Browser.Fleet do
 
   @default_opts [sessions: 2, pages_per_session: 8, timeout: 45_000]
 
-  @doc "Open a fleet of browser sessions, preferring cloud Browser Use browsers."
+  @doc "Open a fleet of Browser Use cloud browser sessions."
   def open(opts \\ []) do
     opts = resolve_opts(opts)
     count = Keyword.fetch!(opts, :sessions)
@@ -125,43 +125,7 @@ defmodule Neuron.Browser.Fleet do
     |> Keyword.merge(opts)
   end
 
-  defp open_session(opts) do
-    case Neuron.Browser.BrowserUse.open_session(opts) do
-      {:ok, handle} ->
-        {:ok, handle}
-
-      {:error, cloud_reason} ->
-        case open_local() do
-          {:ok, handle} ->
-            {:ok, handle}
-
-          {:error, local_reason} ->
-            {:error, {:no_browser_provider, cloud: cloud_reason, local: local_reason}}
-        end
-    end
-  end
-
-  defp open_local do
-    configured? =
-      Application.get_env(:pinocchio, :browser, [])
-      |> Map.new()
-      |> then(&(&1[:executable] || &1[:endpoint]))
-
-    if Code.ensure_loaded?(Pinocchio.Browser) and configured? do
-      case apply(Pinocchio.Browser, :start_session, []) do
-        {:ok, session} ->
-          {:ok, %{pid: session.pid, provider: :local, session: session, prepared: nil}}
-
-        {:error, reason} ->
-          {:error, {:local_browser_start, reason}}
-      end
-    else
-      {:error, :pinocchio_not_configured}
-    end
-  end
-
-  defp close_handle(%{provider: :local, session: session}),
-    do: apply(Pinocchio.Browser, :end_session, [session])
+  defp open_session(opts), do: Neuron.Browser.BrowserUse.open_session(opts)
 
   defp close_handle(handle), do: Neuron.Browser.BrowserUse.close_session(handle)
 end

@@ -52,23 +52,21 @@ Alternatively, set `start_repo: true` and `start_oban: true` and put the Postgre
 | `NEURON_DGRAPH_ENABLED` | `true` outside tests |
 | `ZAI_API_KEY` | Required for live model calls |
 | `ZAI_BASE_URL` | Production override for `https://api.z.ai/api/paas/v4` |
-| `BROWSER_USE_API_KEY` | Required for Browser Use search/browsing |
+| `BROWSER_USE_API_KEY` | Required for all browsing; Browser Use is the only browser provider |
 | `BROWSER_USE_PROFILE_ID` | Optional; Browser Use profile sent to new sessions when set |
-| `CHROMIUM` | Chromium executable path; common system paths are detected |
-| `NEURON_BROWSER_POOL_SIZE` | `4` in production; local session pool size |
 | `NEURON_FLEET_SESSIONS` | `2` in production; browser sessions opened per search fleet |
 | `NEURON_FLEET_PAGES` | `8` in production; concurrent pages multiplexed per fleet session |
 | `NEURON_CAPTURE_PAYLOADS` | `false`; production telemetry payload setting |
 
 Generation uses only `glm-5.3-flash`; passing another model name does not select a different model. The embedding model is independent of text generation and runs locally in the BEAM. There is no remote embedding provider.
 
-Local browsing uses Pinocchio's configured executable/session pool. Browser Use is the explicit alternate browser provider. Neuron traces each provider attempt. Missing infrastructure is never replaced with fabricated output.
+All browsing runs on Browser Use cloud browsers; there is no local browser provider. Neuron traces each attempt. Missing infrastructure is never replaced with fabricated output.
 
 ## Search engines and the browser fleet
 
 Searches run on every enabled engine through `:neuron, :search, :engines` (DuckDuckGo, Google, Yandex, LinkedIn, X, and Reddit by default). The model tailors each query to its platform before anything runs: LinkedIn, X, and Reddit get native, operator-free queries, while the keyword engines keep operators such as `site:` and quoted phrases. Native LinkedIn and X search requires a logged-in `BROWSER_USE_PROFILE_ID`; without one those engines report a login gate and the remaining engines carry the round.
 
-Campaign searches run as one fleet wave: `sessions` browser sessions (cloud Browser Use first, local Chromium as fallback) each multiplex `pages_per_session` concurrent tabs, so concurrency scales with pages rather than browser count — 2 x 8 = 16 concurrent pages by default. One sub-agent controls each page and returns a transcript (final URL, title, text, links); the model then harvests prospect URLs from the transcripts, and every harvested URL must literally appear in its transcript. `:neuron, :browser, :fleet` accepts `sessions`, `pages_per_session`, and `timeout`.
+Campaign searches run as one fleet wave: `sessions` Browser Use cloud sessions each multiplex `pages_per_session` concurrent tabs, so concurrency scales with pages rather than browser count — 2 x 8 = 16 concurrent pages by default. One sub-agent controls each page and returns a transcript (final URL, title, text, links); the model then harvests prospect URLs from the transcripts, and every harvested URL must literally appear in its transcript. `:neuron, :browser, :fleet` accepts `sessions`, `pages_per_session`, and `timeout`.
 
 ## Per-run options
 

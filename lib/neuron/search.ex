@@ -71,16 +71,16 @@ defmodule Neuron.Search do
           Enum.split_with(transcripts, fn transcript -> not gated_url?(transcript.url) end)
 
         page_failures =
-          (for {id, {:error, reason}} <- pages, task = task_by_id[id] do
-             %{engine: task.engine, query: task.query, reason: inspect(reason)}
-           end) ++
-            (for transcript <- gated do
-               %{
-                 engine: transcript.engine,
-                 query: transcript.query,
-                 reason: "login gate at #{transcript.url}"
-               }
-             end)
+          for {id, {:error, reason}} <- pages, task = task_by_id[id] do
+            %{engine: task.engine, query: task.query, reason: inspect(reason)}
+          end ++
+            for transcript <- gated do
+              %{
+                engine: transcript.engine,
+                query: transcript.query,
+                reason: "login gate at #{transcript.url}"
+              }
+            end
 
         {found, harvest_failures} = Neuron.Search.Harvest.from_transcripts(open_transcripts, opts)
         merged = merge_results(found)
@@ -389,19 +389,13 @@ defmodule Neuron.Search.DuckDuckGo do
     end
   end
 
-  defp fallback_search(url, query, opts, reason) do
+  defp fallback_search(_url, query, opts, reason) do
     Neuron.Telemetry.emit(
       [:search, :fallback],
       Neuron.Telemetry.trace_metadata(opts) |> Map.put(:reason, inspect(reason))
     )
 
-    with {:ok, page} <- Neuron.Browser.Local.fetch(url, opts),
-         html when is_binary(html) <- page[:html] || page["html"],
-         false <- blocked?(html) do
-      {:ok, parse(html)}
-    else
-      _ -> model_search(query, opts)
-    end
+    model_search(query, opts)
   end
 
   defp model_search(query, opts) do

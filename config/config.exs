@@ -25,8 +25,6 @@ config :neuron,
     sequence_length: 512
   ],
   browser: [
-    preferred: :local,
-    local: [],
     fleet: [sessions: 2, pages_per_session: 8, timeout: 45_000],
     browser_use: [
       profile_id: System.get_env("BROWSER_USE_PROFILE_ID")
@@ -46,22 +44,6 @@ config :neuron,
   prompts: []
 
 config :neuron, telemetry: [capture_payloads: false]
-
-chromium =
-  System.get_env("CHROMIUM") ||
-    Enum.find(
-      ["/usr/bin/chromium", "/snap/bin/chromium", "/usr/bin/chromium-browser"],
-      &File.exists?/1
-    )
-
-config :pinocchio,
-  browser:
-    (if chromium do
-       [executable: chromium, args: ["--headless=new", "--disable-dev-shm-usage"]]
-     else
-       [executable: nil, endpoint: nil, provider: nil]
-     end),
-  pool: [size: 4, checkout_timeout: 30_000]
 
 config :neuron, ecto_repos: [Neuron.Repo]
 

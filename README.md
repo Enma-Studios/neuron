@@ -25,13 +25,12 @@ Configure the live services in your shell or application's runtime configuration
 ```sh
 export ZAI_API_KEY='...'
 export BROWSER_USE_API_KEY='...'
-export CHROMIUM=/usr/bin/chromium
 mix neuron.models.fetch
 # Downloads pinned intfloat/multilingual-e5-small files into priv/models.
 
 ```
 
-Embeddings run locally inside the BEAM using Bumblebee, Nx.Serving and EXLA. Install a C++ compiler (Debian/Ubuntu: `sudo apt-get install g++`) before compiling dependencies. Model files stay under ignored `priv/models` and must be downloaded before startup or release packaging. Runtime never calls an embedding endpoint. ZAI generation always uses `glm-5.3-flash`. Search runs platform-tailored queries across DuckDuckGo, Google, Yandex, and native LinkedIn, X, and Reddit search as concurrent browser pages; source browsing prefers local Chromium.
+Embeddings run locally inside the BEAM using Bumblebee, Nx.Serving and EXLA. Install a C++ compiler (Debian/Ubuntu: `sudo apt-get install g++`) before compiling dependencies. Model files stay under ignored `priv/models` and must be downloaded before startup or release packaging. Runtime never calls an embedding endpoint. ZAI generation always uses `glm-5.3-flash`. Search runs platform-tailored queries across DuckDuckGo, Google, Yandex, and native LinkedIn, X, and Reddit search as concurrent Browser Use cloud pages; all browsing runs on Browser Use.
 
 ## Interactive use
 
