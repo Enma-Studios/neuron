@@ -26,8 +26,8 @@ defmodule Neuron.Storage do
     Neuron.Telemetry.span([:db, :transaction], metadata, fn -> :mnesia.transaction(fun) end)
   end
 
-  def put_run(run), do: write(:neuron_run, run)
-  def get_run(id), do: read(:neuron_run, id)
+  def put_run(run, metadata \\ %{}), do: write(:neuron_run, run, metadata)
+  def get_run(id), do: read(:neuron_run, id, %{run_id: id})
 
   def list_runs do
     transaction(fn -> :mnesia.match_object({:neuron_run, :_, :_, :_, :_, :_, :_, :_, :_}) end, %{
@@ -35,9 +35,9 @@ defmodule Neuron.Storage do
     })
   end
 
-  def put_agent(agent), do: write(:neuron_agent, agent)
-  def put_operation(operation), do: write(:neuron_operation, operation)
-  def put_outbox(entry), do: write(:neuron_outbox, entry)
+  def put_agent(agent, metadata \\ %{}), do: write(:neuron_agent, agent, metadata)
+  def put_operation(operation, metadata \\ %{}), do: write(:neuron_operation, operation, metadata)
+  def put_outbox(entry, metadata \\ %{}), do: write(:neuron_outbox, entry, metadata)
 
   def update_outbox(id, status, attempts \\ nil) do
     transaction(
@@ -173,21 +173,20 @@ defmodule Neuron.Storage do
     end
   end
 
-  defp write(_table, record) do
-    case transaction(fn -> :mnesia.write(record) end, %{
-           task_id: "db:write",
-           operation_id: inspect(elem(record, 1))
-         }) do
+  defp write(_table, record, metadata) do
+    db_metadata =
+      Map.merge(%{task_id: "db:write", operation_id: inspect(elem(record, 1))}, metadata)
+
+    case transaction(fn -> :mnesia.write(record) end, db_metadata) do
       {:atomic, :ok} -> :ok
       {:aborted, reason} -> {:error, reason}
     end
   end
 
-  defp read(table, key) do
-    case transaction(fn -> :mnesia.read(table, key) end, %{
-           task_id: "db:read",
-           operation_id: inspect(key)
-         }) do
+  defp read(table, key, metadata) do
+    db_metadata = Map.merge(%{task_id: "db:read", operation_id: inspect(key)}, metadata)
+
+    case transaction(fn -> :mnesia.read(table, key) end, db_metadata) do
       {:atomic, [record]} -> {:ok, record}
       {:atomic, []} -> :not_found
       {:aborted, reason} -> {:error, reason}

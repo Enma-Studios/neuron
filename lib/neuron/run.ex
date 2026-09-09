@@ -31,7 +31,7 @@ defmodule Neuron.Run do
   def init({id, profile, input, opts}) do
     now = DateTime.utc_now()
     run = {:neuron_run, id, profile, input, :queued, now, now, nil, nil}
-    :ok = Neuron.Storage.put_run(run)
+    :ok = Neuron.Storage.put_run(run, %{run_id: id, task_id: "coordinator:init"})
     _ = Neuron.Storage.next_event(id, :run_created, %{profile: profile})
 
     {:ok, :queued, %__MODULE__{id: id, profile: profile, input: input, opts: opts},
@@ -71,7 +71,8 @@ defmodule Neuron.Run do
     _ =
       Neuron.Storage.put_operation(
         {:neuron_operation, operation, data.id, data.id, :coordinator, 1, :started, data.plan,
-         nil, DateTime.utc_now()}
+         nil, DateTime.utc_now()},
+        %{run_id: data.id, agent_id: data.id, task_id: "coordinator:operation"}
       )
 
     case data.profile.run(data.plan, context(data)) do
@@ -79,7 +80,8 @@ defmodule Neuron.Run do
         _ =
           Neuron.Storage.put_operation(
             {:neuron_operation, operation, data.id, data.id, :coordinator, 1, :completed,
-             data.plan, result, DateTime.utc_now()}
+             data.plan, result, DateTime.utc_now()},
+            %{run_id: data.id, agent_id: data.id, task_id: "coordinator:operation"}
           )
 
         complete(%{data | result: result})
@@ -144,7 +146,8 @@ defmodule Neuron.Run do
 
     _ =
       Neuron.Storage.put_run(
-        {:neuron_run, data.id, data.profile, data.input, status, now, now, result, error}
+        {:neuron_run, data.id, data.profile, data.input, status, now, now, result, error},
+        %{run_id: data.id, task_id: "coordinator:state"}
       )
 
     _ = Neuron.Storage.next_event(data.id, :status_changed, %{status: status})

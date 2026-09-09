@@ -44,7 +44,8 @@ defmodule Neuron.Agent do
     _ =
       Neuron.Storage.put_agent(
         {:neuron_agent, id, run_id, parent_id, role, :queued, %{input: input, worker: worker},
-         now}
+         now},
+        %{run_id: run_id, agent_id: id, task_id: "agent:init"}
       )
 
     _ =
@@ -153,7 +154,8 @@ defmodule Neuron.Agent do
       Neuron.Storage.put_agent(
         {:neuron_agent, data.id, data.run_id, data.parent_id, data.role, status,
          %{input: data.input, result: result, error: error, worker: data.worker},
-         DateTime.utc_now()}
+         DateTime.utc_now()},
+        %{run_id: data.run_id, agent_id: data.id, task_id: data.role}
       )
 
     Neuron.Telemetry.emit([:agent, :state], %{
