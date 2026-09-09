@@ -36,7 +36,7 @@ defmodule Neuron.Intelligence do
           "dgraph.type" => ["Snapshot", "Entity"],
           "url" => snapshot[:url],
           "markdown" => snapshot.markdown,
-          "embedding" => embedding,
+          Neuron.Embedding.field() => embedding,
           "reason" => Enum.join(decision.reasons, " "),
           "fit_score" => decision.score
         },

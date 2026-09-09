@@ -440,7 +440,8 @@ defmodule Neuron.Research do
           "social_accounts" =>
             Enum.map(list(person, "social_accounts"), &social_node(&1, uid, domain)),
           "sources" => source_refs,
-          "embedding" => embedding(string(person["bio"]) <> " " <> string(person["title"]), opts)
+          Neuron.Embedding.field() =>
+            embedding(string(person["bio"]) <> " " <> string(person["title"]), opts)
         }
         |> drop_blanks()
       end)
@@ -461,7 +462,7 @@ defmodule Neuron.Research do
           "organization" => %{"uid" => org_uid},
           "topics" => list(post, "topics"),
           "sources" => source_refs,
-          "embedding" => embedding(string(post["body"]), opts)
+          Neuron.Embedding.field() => embedding(string(post["body"]), opts)
         }
         |> drop_blanks()
       end)
@@ -511,7 +512,7 @@ defmodule Neuron.Research do
       "assertions" => assertion_nodes,
       "leads" => lead_nodes,
       "sources" => source_nodes,
-      "embedding" => embedding(string(result.target_profile["summary"]), opts)
+      Neuron.Embedding.field() => embedding(string(result.target_profile["summary"]), opts)
     }
     |> drop_blanks()
   end
@@ -566,7 +567,8 @@ defmodule Neuron.Research do
       "category" => string(field(requirement, "category")),
       "description" => string(field(requirement, "description") || requirement),
       "required_by" => %{"uid" => owner_uid},
-      "embedding" => embedding(string(field(requirement, "description") || requirement), opts)
+      Neuron.Embedding.field() =>
+        embedding(string(field(requirement, "description") || requirement), opts)
     }
     |> drop_blanks()
   end
@@ -579,7 +581,8 @@ defmodule Neuron.Research do
       "description" => string(field(leniency, "description") || leniency),
       "subject" => %{"uid" => owner_uid},
       "score" => number(field(leniency, "score")),
-      "embedding" => embedding(string(field(leniency, "description") || leniency), opts)
+      Neuron.Embedding.field() =>
+        embedding(string(field(leniency, "description") || leniency), opts)
     }
     |> drop_blanks()
   end
@@ -591,7 +594,7 @@ defmodule Neuron.Research do
       "name" => string(field(capability, "name") || capability),
       "description" => string(field(capability, "description")),
       "category" => string(field(capability, "category")),
-      "embedding" =>
+      Neuron.Embedding.field() =>
         embedding(
           string(field(capability, "description") || field(capability, "name") || capability),
           opts
@@ -608,7 +611,7 @@ defmodule Neuron.Research do
       "summary" => string(field(client, "summary") || field(client, "description")),
       "industry" => string(field(client, "industry")),
       "client_of" => %{"uid" => owner_uid},
-      "embedding" =>
+      Neuron.Embedding.field() =>
         embedding(
           string(
             field(client, "summary") || field(client, "description") || field(client, "name") ||

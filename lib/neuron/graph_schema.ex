@@ -1,7 +1,7 @@
 defmodule Neuron.Graph.Schema do
   @moduledoc "Versioned Dgraph predicates for the shared knowledge graph."
 
-  @version 8
+  @version 9
 
   def version, do: @version
 
@@ -58,7 +58,7 @@ defmodule Neuron.Graph.Schema do
       sources: [uid]
       assertions: [uid]
       leads: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Person {
       name: string
@@ -75,7 +75,7 @@ defmodule Neuron.Graph.Schema do
       sources: [uid]
       assertions: [uid]
       leads: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type SocialAccount {
       platform: string
@@ -88,7 +88,7 @@ defmodule Neuron.Graph.Schema do
       owner: uid
       posts: [uid]
       sources: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Post {
       body: string
@@ -102,7 +102,7 @@ defmodule Neuron.Graph.Schema do
       geographies: [uid]
       sources: [uid]
       assertions: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Geography {
       name: string
@@ -113,7 +113,7 @@ defmodule Neuron.Graph.Schema do
       organizations: [uid]
       people: [uid]
       posts: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Requirement {
       category: string
@@ -123,7 +123,7 @@ defmodule Neuron.Graph.Schema do
       applies_to: uid
       geographies: [uid]
       evidence: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Leniency {
       category: string
@@ -132,14 +132,14 @@ defmodule Neuron.Graph.Schema do
       subject: uid
       geographies: [uid]
       evidence: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Capability {
       name: string
       description: string
       category: string
       evidence: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type ClientProfile {
       name: string
@@ -150,7 +150,7 @@ defmodule Neuron.Graph.Schema do
       requirements: [uid]
       geographies: [uid]
       evidence: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Campaign {
       name: string
@@ -175,7 +175,7 @@ defmodule Neuron.Graph.Schema do
       requirements: [uid]
       leniencies: [uid]
       exclusions: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Lead {
       name: string
@@ -266,7 +266,7 @@ defmodule Neuron.Graph.Schema do
     confidence: float @index(float) .
     observed_at: datetime @index(hour) .
     predicate: string .
-    embedding: float32vector @index(hnsw(metric:"cosine")) .
+    embedding_e5_384: float32vector @index(hnsw(metric:"cosine")) .
     fetched_at: datetime @index(hour) .
     snapshot: uid @reverse .
     documents: [uid] @reverse .

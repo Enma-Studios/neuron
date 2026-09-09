@@ -18,6 +18,9 @@ defmodule Neuron.Embedding do
       do: Keyword.fetch!(config, :model) <> "@" <> Keyword.fetch!(config, :revision),
       else: Atom.to_string(provider())
   end
+
+  @doc "Dgraph predicate reserved for the supported multilingual E5 vector shape."
+  def field, do: "embedding_e5_384"
 end
 
 defmodule Neuron.Embedding.Local do

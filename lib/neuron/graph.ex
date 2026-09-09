@@ -141,13 +141,15 @@ defmodule Neuron.Graph do
 
   defp encode_vectors(value) when is_list(value), do: Enum.map(value, &encode_vectors/1)
 
-  defp encode_vectors(%{"embedding" => embedding} = map) when is_list(embedding) do
-    Map.put(map, "embedding", Dlex.Utils.encode_vector(embedding))
-    |> encode_vectors()
-  end
-
   defp encode_vectors(map) when is_map(map),
-    do: Map.new(map, fn {key, value} -> {key, encode_vectors(value)} end)
+    do:
+      Map.new(map, fn
+        {"embedding_e5_384", value} when is_list(value) ->
+          {"embedding_e5_384", Dlex.Utils.encode_vector(value)}
+
+        {key, value} ->
+          {key, encode_vectors(value)}
+      end)
 
   defp encode_vectors(value), do: value
 end

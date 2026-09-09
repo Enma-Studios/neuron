@@ -48,7 +48,7 @@
       sources: [uid]
       assertions: [uid]
       leads: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Person {
       name: string
@@ -65,7 +65,7 @@
       sources: [uid]
       assertions: [uid]
       leads: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type SocialAccount {
       platform: string
@@ -78,7 +78,7 @@
       owner: uid
       posts: [uid]
       sources: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Post {
       body: string
@@ -92,7 +92,7 @@
       geographies: [uid]
       sources: [uid]
       assertions: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Geography {
       name: string
@@ -103,7 +103,7 @@
       organizations: [uid]
       people: [uid]
       posts: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Requirement {
       category: string
@@ -113,7 +113,7 @@
       applies_to: uid
       geographies: [uid]
       evidence: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Leniency {
       category: string
@@ -122,14 +122,14 @@
       subject: uid
       geographies: [uid]
       evidence: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Capability {
       name: string
       description: string
       category: string
       evidence: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type ClientProfile {
       name: string
@@ -140,7 +140,7 @@
       requirements: [uid]
       geographies: [uid]
       evidence: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Campaign {
       name: string
@@ -165,7 +165,7 @@
       requirements: [uid]
       leniencies: [uid]
       exclusions: [uid]
-      embedding: float32vector
+      embedding_e5_384: float32vector
     }
     type Lead {
       name: string
@@ -256,6 +256,6 @@
     confidence: float @index(float) .
     observed_at: datetime .
     predicate: string .
-    embedding: float32vector @index(hnsw(metric:"cosine")) .
+    embedding_e5_384: float32vector @index(hnsw(metric:"cosine")) .
     fetched_at: datetime .
     snapshot: uid @reverse .

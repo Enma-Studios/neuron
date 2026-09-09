@@ -36,7 +36,7 @@ defmodule Neuron.SelectionTest do
     record = %{
       "uid" => "0x123",
       "external_id" => "person",
-      "embedding" => [1.0, 0.0],
+      Neuron.Embedding.field() => [1.0, 0.0],
       "assertions" => claims
     }
 
@@ -168,7 +168,7 @@ defmodule Neuron.SelectionTest do
         %{
           "uid" => "0x456",
           "external_id" => "asha",
-          "embedding" => [1.0],
+          Neuron.Embedding.field() => [1.0],
           "assertions" => claims
         },
         campaign,

@@ -38,13 +38,13 @@ defmodule Neuron.Selection do
            ),
          {:ok, lexical} <-
            Neuron.Graph.query(
-             "query candidates($q: string, $space: string) { results(func: anyoftext(knowledge_text, $q), first: 200) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url embedding assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } } }",
+             "query candidates($q: string, $space: string) { results(func: anyoftext(knowledge_text, $q), first: 200) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } } }",
              %{"$q" => query, "$space" => Neuron.Embedding.space()},
              opts
            ),
          {:ok, semantic} <-
            Neuron.Graph.query(
-             "query candidates($v: float32vector, $space: string) { results(func: similar_to(embedding, 200, $v)) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url embedding assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } } }",
+             "query candidates($v: float32vector, $space: string) { results(func: similar_to(#{Neuron.Embedding.field()}, 200, $v)) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } } }",
              %{"$v" => vector, "$space" => Neuron.Embedding.space()},
              opts
            ) do
@@ -93,7 +93,7 @@ defmodule Neuron.Selection do
         not Enum.any?(target.exclusions, &contains?(text, &1))
 
     if valid do
-      cosine = cosine(vector, record["embedding"])
+      cosine = cosine(vector, record[Neuron.Embedding.field()])
       market = 0.5 * match_terms(target.markets, text) + 0.5 * max(cosine, 0.0)
 
       observed =

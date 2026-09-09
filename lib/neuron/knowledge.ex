@@ -299,7 +299,7 @@ defmodule Neuron.Knowledge do
             "uid" => record["uid"],
             "knowledge_json" => Jason.encode!(facts),
             "knowledge_text" => text <> " " <> context,
-            "embedding" => vector,
+            Neuron.Embedding.field() => vector,
             "embedding_space" => Neuron.Embedding.space(),
             "current_claims" => refs
           }),
@@ -354,7 +354,7 @@ defmodule Neuron.Knowledge do
               "body" => text,
               "url" => document.url,
               "documents" => [%{"uid" => snapshot_id}],
-              "embedding" => vector,
+              Neuron.Embedding.field() => vector,
               "embedding_space" => Neuron.Embedding.space()
             },
             opts

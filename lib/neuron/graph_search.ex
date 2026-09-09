@@ -15,7 +15,7 @@ defmodule Neuron.GraphSearch do
         organizations(func: anyoftext(description, $q), first: 25) { uid name domain industry geographies people clients }
         people(func: anyoftext(bio, $q), first: 25) { uid name title employer location social_accounts posts }
         requirements(func: anyoftext(description, $q), first: 25) { uid category description required_by applies_to }
-        posts(func: anyoftext(body, $q), first: 25) { uid title url author organization published_at embedding }
+        posts(func: anyoftext(body, $q), first: 25) { uid title url author organization published_at embedding_e5_384 }
       }
       """
 
@@ -31,7 +31,7 @@ defmodule Neuron.GraphSearch do
 
   def semantic(vector, opts \\ []) do
     dql =
-      "query search($v: float32vector) { results(func: similar_to(embedding, 25, $v)) { uid body source_url } }"
+      "query search($v: float32vector) { results(func: similar_to(#{Neuron.Embedding.field()}, 25, $v)) { uid body source_url } }"
 
     Neuron.Graph.query(dql, %{"$v" => vector}, opts)
   end

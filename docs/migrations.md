@@ -23,7 +23,7 @@ mix neuron.dgraph.migrate
 mix neuron.dgraph.migrate --endpoint localhost:9080 --transport grpc
 ```
 
-The task requires SQL migrations first. It applies sorted, immutable `.dql` files in `priv/dgraph/migrations`, recording each filename only after Dlex reports successful schema application. The baseline contains the domain schema; version 000005 adds stable external identities and 000006 adds document history, assertions, current knowledge projections, and freshness indexes. Versions 000007 and 000008 add embedding-space isolation and queryable outreach channels. Applied files are skipped.
+The task requires SQL migrations first. It applies sorted, immutable `.dql` files in `priv/dgraph/migrations`, recording each filename only after Dlex reports successful schema application. The baseline declares the dedicated 384-dimensional multilingual E5 vector index used by all current graph writes and similarity queries. Version 000005 adds stable external identities and 000006 adds document history, assertions, current knowledge projections, and freshness indexes. Versions 000007 and 000008 add embedding-space isolation and queryable outreach channels. Applied files are skipped.
 
 Dgraph schema application and SQL ledger insertion are separate transactions. A crash between them reapplies the same schema file; files must therefore be idempotent. Run one migration process at a time. Pair each SQL runtime database with its intended Dgraph database: a ledger from another environment cannot establish that a fresh graph is migrated.
 

@@ -57,13 +57,13 @@ defmodule Neuron.DgraphIntegrationTest do
 
     assert {:ok, %{"people" => [person]}} =
              Neuron.Graph.query(
-               "query person($url: string) { people(func: eq(profile_url, $url)) { name embedding knowledge_json assertions { excerpt } } }",
+               "query person($url: string) { people(func: eq(profile_url, $url)) { name embedding_e5_384 knowledge_json assertions { excerpt } } }",
                %{"$url" => identity},
                connection: connection
              )
 
     assert person["name"] == "Ada"
-    assert person["embedding"] != nil
+    assert person["embedding_e5_384"] != nil
     assert Jason.decode!(person["knowledge_json"])["name"] == "Ada"
   end
 
