@@ -114,7 +114,9 @@ defmodule Neuron.Coordinator.Intelligence do
 
   @impl true
   def run(%{urls: urls, fit_profile: fit_profile}, context) do
-    Neuron.Intelligence.explore_many(urls, fit_profile, context[:options] || [])
+    options = Keyword.put(context[:options] || [], :run_id, context[:run_id])
+
+    Neuron.Intelligence.explore_many(urls, fit_profile, options)
     |> then(&{:ok, &1})
   end
 end
