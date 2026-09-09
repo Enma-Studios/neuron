@@ -15,7 +15,7 @@ defmodule Neuron.MixProject do
   def application do
     [
       mod: {Neuron.Application, []},
-      extra_applications: [:logger, :crypto, :inets, :ssl, :mnesia]
+      extra_applications: [:logger, :crypto, :inets, :ssl]
     ]
   end
 

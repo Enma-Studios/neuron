@@ -13,9 +13,11 @@ defmodule Neuron.Dgraph do
 
     state =
       if Code.ensure_loaded?(Dlex) and config[:enabled] != false do
+        {hostname, port} = endpoint(config)
+
         dlex_opts = [
-          hostname: config[:hostname] || "localhost",
-          port: config[:port] || 9080,
+          hostname: hostname,
+          port: port,
           pool_size: config[:pool_size] || 4,
           transport: config[:transport] || :grpc
         ]
@@ -38,4 +40,19 @@ defmodule Neuron.Dgraph do
 
   @impl true
   def handle_call(:connection, _from, state), do: {:reply, state.connection, state}
+
+  defp endpoint(config) do
+    case config[:endpoint] do
+      endpoint when is_binary(endpoint) ->
+        uri =
+          URI.parse(
+            if String.contains?(endpoint, "://"), do: endpoint, else: "grpc://" <> endpoint
+          )
+
+        {uri.host || "localhost", uri.port || 9080}
+
+      _ ->
+        {config[:hostname] || "localhost", config[:port] || 9080}
+    end
+  end
 end
