@@ -59,7 +59,7 @@ Invalid events return `{:error, {:invalid_event, state, event}}`; stale versions
 
 After explicit proposal approval, start `Neuron.Coordinator.Campaign` with `%{approved_campaign: campaign}` to validate the approved brief without inferring new proposals. Callers are responsible for presenting proposals and obtaining that approval.
 
-`Neuron.Campaign.run/2` counts unique contacts outside the model, retains failures, and stops when the target is met or its attempt budget is exhausted. `Neuron.Research.run(domain, fit_profile, opts)` starts/awaits a durable six-stage research run. An explicit `run_id:` identifies an existing attempt on replay. Research produces organization, people, posts, leads, drafts, target profile, and source URLs; `Neuron.Schemas` validates shapes with embedded Ecto schemas and changesets.
+`Neuron.Campaign.run/2` counts unique contacts outside the model, retains failures, and stops when the target is met or its attempt budget is exhausted. Every campaign run and research attempt receives its own UUID; attempts are correlated with the campaign through `parent_run_id`. `Neuron.Research.run(domain, fit_profile, opts)` starts/awaits a durable six-stage research run. An explicit `run_id:` identifies an existing attempt on replay. Research produces organization, people, posts, leads, drafts, target profile, and source URLs; `Neuron.Schemas` validates shapes with embedded Ecto schemas and changesets.
 
 `Neuron.Intelligence.explore/3` is a lower-level browser/snapshot/embedding/scoring API. `explore_many/3` and `discover/3` operate over multiple sources. Use the coordinator profile to run this work durably.
 

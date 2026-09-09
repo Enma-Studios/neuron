@@ -40,10 +40,12 @@ defmodule Neuron.CampaignTest do
   end
 
   test "validates the public campaign result and rejects malformed leads" do
+    campaign_run_id = Ecto.UUID.generate()
+
     assert {:ok, _} =
              Neuron.Schemas.validate_campaign_result(%{
                status: :target_met,
-               campaign_run_id: "campaign-1",
+               campaign_run_id: campaign_run_id,
                target_count: 1,
                campaign: %{},
                leads: [%{"person_name" => "Ada", "reason" => "Matched role", "fit_score" => 0.8}],
@@ -53,7 +55,7 @@ defmodule Neuron.CampaignTest do
     assert {:error, _} =
              Neuron.Schemas.validate_campaign_result(%{
                status: :target_met,
-               campaign_run_id: "campaign-1",
+               campaign_run_id: campaign_run_id,
                target_count: 1,
                leads: [%{"person_name" => "Ada", "reason" => "bad", "fit_score" => 2.0}]
              })
@@ -61,9 +63,19 @@ defmodule Neuron.CampaignTest do
     assert {:ok, _} =
              Neuron.Schemas.validate_campaign_result(%{
                "status" => "target_met",
-               "campaign_run_id" => "campaign-2",
+               "campaign_run_id" => Ecto.UUID.generate(),
                "target_count" => 1,
                "leads" => [%{"person_name" => "Ada", "reason" => "Matched role"}]
              })
+
+    assert {:error, errors} =
+             Neuron.Schemas.validate_campaign_result(%{
+               status: :target_met,
+               campaign_run_id: "campaign-1",
+               target_count: 1,
+               leads: []
+             })
+
+    assert %{campaign_run_id: ["is invalid"]} = errors
   end
 end

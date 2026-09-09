@@ -81,7 +81,7 @@ defmodule Neuron.Schemas.CampaignResult do
   @primary_key false
   embedded_schema do
     field(:status, :string)
-    field(:campaign_run_id, :string)
+    field(:campaign_run_id, Ecto.UUID)
     field(:target_count, :integer)
     field(:campaign, :map, default: %{})
     field(:failures, {:array, :map}, default: [])

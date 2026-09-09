@@ -96,12 +96,8 @@ defmodule Neuron.Campaign do
 
   @doc "Run several approved campaigns, keeping each target counter independent."
   def run_many(campaigns, opts \\ []) when is_list(campaigns) do
-    base = opts[:run_id] || "campaign-batch-#{System.unique_integer([:positive])}"
-
-    Enum.with_index(campaigns, 1)
-    |> Enum.map(fn {campaign, index} ->
-      run(campaign, Keyword.put(opts, :run_id, "#{base}-#{index}"))
-    end)
+    opts = Keyword.delete(opts, :run_id)
+    Enum.map(campaigns, &run(&1, opts))
   end
 
   defp intake_answers(answers, url, opts) do
@@ -184,10 +180,10 @@ defmodule Neuron.Campaign do
 
   @doc "Run research repeatedly until the off-agent unique lead target is met."
   def run(campaign, opts \\ []) when is_map(campaign) do
-    with {:ok, campaign} <- normalize_campaign(campaign) do
+    with {:ok, campaign} <- normalize_campaign(campaign),
+         {:ok, campaign_run_id} <- campaign_run_id(opts) do
       target = max(integer(campaign[:lead_count] || campaign["lead_count"], 1), 1)
       max_attempts = max(integer(opts[:max_attempts], 3), 1)
-      campaign_run_id = opts[:run_id] || "campaign-#{System.unique_integer([:positive])}"
       collect(campaign, opts, campaign_run_id, target, max_attempts, 1, %{}, [])
     end
   end
@@ -224,7 +220,7 @@ defmodule Neuron.Campaign do
 
   defp collect(campaign, opts, campaign_run_id, target, max_attempts, attempt, leads, failures)
        when attempt <= max_attempts do
-    run_id = "#{campaign_run_id}-attempt-#{attempt}"
+    run_id = Ecto.UUID.generate()
 
     Neuron.Telemetry.emit([:campaign, :attempt], %{
       run_id: campaign_run_id,
@@ -328,6 +324,18 @@ defmodule Neuron.Campaign do
       :ok
     end
   end
+
+  defp campaign_run_id(opts) do
+    case Keyword.get(opts, :run_id) do
+      nil -> {:ok, Ecto.UUID.generate()}
+      run_id -> Ecto.UUID.cast(run_id) |> normalize_campaign_run_id(run_id)
+    end
+  end
+
+  defp normalize_campaign_run_id({:ok, run_id}, _original), do: {:ok, run_id}
+
+  defp normalize_campaign_run_id(:error, original),
+    do: {:error, {:invalid_campaign_run_id, original}}
 
   defp blank_uid(kind, value),
     do:

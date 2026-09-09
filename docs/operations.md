@@ -49,7 +49,7 @@ Run options contain a stable trace ID; run and task IDs correlate source/model a
 
 Rendered prompts, model request/response summaries, and transition events are emitted through the root `[:neuron]` telemetry event with correlation IDs. This telemetry is independent of Oban's finished-job pruning. `Neuron.events(id)` returns durable transition history; telemetry consumers receive prompt and model payloads according to the `capture_payloads` setting.
 
-A campaign's research attempts use IDs `<campaign-run-id>-attempt-<number>`. Attach a telemetry consumer to `[:neuron]` when you need a complete external run log. SQL checkpoints preserve in-progress outputs when graph persistence fails. Supply credentials through application configuration, not run options stored in SQL. Apply your organization's retention/access controls to the SQL database and exports.
+Campaign runs and their research attempts each use an independently generated UUID. Attempt telemetry carries both `run_id` (the campaign UUID) and `attempt_run_id` (the research UUID), while research receives `parent_run_id` for correlation. Attach a telemetry consumer to `[:neuron]` when you need a complete external run log. SQL checkpoints preserve in-progress outputs when graph persistence fails. Supply credentials through application configuration, not run options stored in SQL. Apply your organization's retention/access controls to the SQL database and exports.
 
 ## Checks
 

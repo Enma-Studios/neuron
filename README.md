@@ -53,6 +53,8 @@ quit
 
 Campaign intake asks at most eight fields: organization, field, offer, target roles, target organizations, geography, exclusions, and lead count. A supplied URL is scraped to fill those fields. Multiple inferred campaigns require approval. The console starts runs asynchronously and returns their IDs; use `show` to inspect results.
 
+Campaign and research attempt run IDs are UUIDs. Attempt telemetry and research options carry the campaign UUID as `parent_run_id` for correlation.
+
 ## Library use
 
 ```elixir
