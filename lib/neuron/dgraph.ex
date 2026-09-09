@@ -49,10 +49,10 @@ defmodule Neuron.Dgraph do
             if String.contains?(endpoint, "://"), do: endpoint, else: "grpc://" <> endpoint
           )
 
-        {uri.host || "localhost", uri.port || 8080}
+        {uri.host || "localhost", uri.port || 9080}
 
       _ ->
-        {config[:hostname] || "localhost", config[:port] || 8080}
+        {config[:hostname] || "localhost", config[:port] || 9080}
     end
   end
 end

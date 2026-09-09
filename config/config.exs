@@ -3,8 +3,8 @@ import Config
 config :neuron,
   storage: [data_dir: "priv/neuron_data", backend: :rocksdb],
   dgraph: [
-    endpoint: System.get_env("NEURON_DGRAPH_ENDPOINT", "localhost:8080"),
-    transport: String.to_atom(System.get_env("NEURON_DGRAPH_TRANSPORT", "http")),
+    endpoint: System.get_env("NEURON_DGRAPH_ENDPOINT", "localhost:9080"),
+    transport: String.to_atom(System.get_env("NEURON_DGRAPH_TRANSPORT", "grpc")),
     enabled: System.get_env("NEURON_DGRAPH_ENABLED", "true") == "true"
   ],
   model: [
