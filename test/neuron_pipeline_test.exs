@@ -10,10 +10,13 @@ defmodule Neuron.PipelineTest do
 
   test "pipeline checkpoints one stage per job" do
     {:ok, id} = Neuron.start_run(Profile, %{leads: [%{name: "Ada"}]})
-    Oban.drain_queue(Neuron.Oban, queue: :orchestrators)
+    Oban.drain_queue(Neuron.Oban, queue: :agents)
     assert %{status: :processing, stage_index: 0} = Neuron.get_run(id)
     Oban.drain_queue(Neuron.Oban, queue: :agents)
-    assert %{status: :processing, stage_index: 1, stage_data: %{checkpoint: true}} = Neuron.get_run(id)
+
+    assert %{status: :processing, stage_index: 1, stage_data: %{checkpoint: true}} =
+             Neuron.get_run(id)
+
     Oban.drain_queue(Neuron.Oban, queue: :agents)
     assert %{status: :complete, leads: [%{name: "Ada"}]} = Neuron.get_run(id)
   end
@@ -23,5 +26,64 @@ defmodule Neuron.PipelineTest do
     result = Neuron.Pipeline.map(Enum.to_list(1..30), &(&1 * 2), max_concurrency: 3)
     assert Enum.sort(result) == Enum.map(1..30, &(&1 * 2))
     assert DynamicSupervisor.count_children(Neuron.PipelineSupervisor) == before
+  end
+end
+
+defmodule Neuron.RecoveryTest do
+  use ExUnit.Case, async: false
+
+  defmodule Failing do
+    def plan(data, _), do: {:ok, data}
+    def stages, do: [:first, :fail]
+    def stage(:first, data, _), do: {:ok, Map.put(data, :saved, true)}
+    def stage(:fail, _, _), do: raise("stage unavailable")
+  end
+
+  defmodule InvalidWorker do
+    def new(args, _opts), do: Oban.Job.new(args, worker: "InvalidWorker", priority: -1)
+  end
+
+  test "exhausted crashes retain the checkpoint and can resume" do
+    {:ok, id} = Neuron.start_run(Failing, %{})
+    Oban.drain_queue(Neuron.Oban, queue: :agents)
+    Oban.drain_queue(Neuron.Oban, queue: :agents)
+    machine = Neuron.FSM.get(id)
+
+    assert_raise RuntimeError, "stage unavailable", fn ->
+      Neuron.StageWorker.perform(%Oban.Job{
+        args: %{"machine_id" => id, "version" => machine.version},
+        attempt: 5,
+        max_attempts: 5
+      })
+    end
+
+    assert %{status: :failed, stage_index: 1, stage_data: %{saved: true}} = Neuron.get_run(id)
+    assert {:ok, %{state: "processing"}} = Neuron.resume_run(id)
+    assert %{stage_index: 1, stage_data: %{saved: true}} = Neuron.get_run(id)
+    Neuron.cancel_run(id)
+  end
+
+  test "failed job insertion rolls back machine and history" do
+    id = Ecto.UUID.generate()
+
+    assert_raise MatchError, fn ->
+      Neuron.FSM.create(Neuron.Run, %{}, id: id, worker: InvalidWorker)
+    end
+
+    assert is_nil(Neuron.Persistence.repo().get(Neuron.FSM.Machine, id))
+    assert Neuron.events(id) == []
+  end
+
+  test "delayed events become harmless when the version changes" do
+    {:ok, id} = Neuron.start_run(Neuron.Coordinator.Default, %{})
+    {:ok, timer} = Neuron.FSM.schedule_event(id, :cancel, 3_600)
+    assert timer.state == "scheduled"
+    Oban.drain_queue(Neuron.Oban, queue: :orchestrators, with_recursion: true)
+    assert :ok = Neuron.FSM.Timer.perform(timer)
+    assert Neuron.get_run(id).status == :complete
+  end
+
+  test "rejects process-local data before persistence" do
+    assert_raise ArgumentError, ~r/durable data/, fn -> Neuron.start_run(%{owner: self()}) end
   end
 end

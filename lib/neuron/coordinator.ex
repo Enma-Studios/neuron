@@ -1,7 +1,11 @@
 defmodule Neuron.Coordinator do
   @moduledoc "Behaviour implemented by coordinator profiles."
 
-  @callback plan(input :: term(), context :: map()) :: {:ok, term()} | {:error, term()}
+  @callback plan(input :: term(), context :: map()) ::
+              {:ok, term()}
+              | {:error, term()}
+              | {:needs_input, map()}
+              | {:approval_required, map()}
   @callback run(plan :: term(), context :: map()) :: {:ok, term()} | {:error, term()}
 
   def default, do: Neuron.Coordinator.Default

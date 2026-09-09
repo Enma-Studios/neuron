@@ -47,6 +47,7 @@ defmodule Neuron.FSM do
       schedule(machine, Keyword.get(opts, :worker), 0)
       machine
     end)
+    |> report(:created)
   end
 
   def get(id), do: P.repo().get!(Machine, id)
@@ -99,6 +100,7 @@ defmodule Neuron.FSM do
       schedule(next, spec[:worker], Keyword.get(spec, :after, 0))
       next
     end)
+    |> report(event)
   end
 
   def schedule_event(id, event, seconds) when is_integer(seconds) and seconds >= 0 do
@@ -131,14 +133,20 @@ defmodule Neuron.FSM do
       event: to_string(event),
       payload: P.encode(payload)
     })
+  end
 
+  defp report({:ok, machine} = result, event) do
     Neuron.Telemetry.emit([:fsm, :transition], %{
       run_id: machine.id,
       version: machine.version,
       state: machine.state,
       event: event
     })
+
+    result
   end
+
+  defp report(error, _event), do: error
 end
 
 defmodule Neuron.FSM.Timer do

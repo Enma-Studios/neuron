@@ -23,6 +23,9 @@ defmodule Neuron.Application do
         [
           {Neuron.Dgraph, []},
           {DynamicSupervisor, name: Neuron.PipelineSupervisor, strategy: :one_for_one}
-        ], strategy: :one_for_one, name: Neuron.Supervisor)
+        ],
+      strategy: :one_for_one,
+      name: Neuron.Supervisor
+    )
   end
 end

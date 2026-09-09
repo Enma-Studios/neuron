@@ -8,6 +8,7 @@ defmodule Neuron.MixProject do
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      elixirc_paths: if(Mix.env() == :test, do: ["lib", "test/support"], else: ["lib"]),
       aliases: [test: ["neuron.migrate", "test"]],
       source_url: "https://github.com/Enma-Studios/neuron",
       elixirc_options: [warnings_as_errors: true]
@@ -27,7 +28,7 @@ defmodule Neuron.MixProject do
       {:ecto_sql, "~> 3.13"},
       {:ecto_sqlite3, "~> 0.22"},
       {:postgrex, "~> 0.21"},
-      {:oban, "~> 2.20"},
+      {:oban, "~> 2.24"},
       {:gen_stage, "~> 1.3"},
       {:owl, "~> 0.13"},
       {:telemetry, "~> 1.3"},

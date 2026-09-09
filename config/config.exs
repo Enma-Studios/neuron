@@ -49,6 +49,7 @@ config :neuron, Neuron.Repo,
 config :neuron, :oban,
   engine: Oban.Engines.Lite,
   notifier: Oban.Notifiers.PG,
+  lifeline: [rescue_after: {1, :hour}],
   queues: [orchestrators: 4, agents: 8],
   plugins: [{Oban.Plugins.Pruner, max_age: 86_400}]
 

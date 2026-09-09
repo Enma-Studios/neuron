@@ -8,12 +8,18 @@ defmodule Neuron.Research do
   ]
 
   def run(domain, fit_profile, opts \\ []) when is_binary(domain) and is_map(fit_profile) do
-    with {:ok, response} <-
-           Neuron.run(
-             Neuron.Coordinator.LeadGeneration,
-             %{domain: domain, fit_profile: fit_profile},
-             opts
-           ) do
+    id = Keyword.get(opts, :run_id, Ecto.UUID.generate())
+
+    if is_nil(Neuron.Persistence.repo().get(Neuron.FSM.Machine, id)) do
+      {:ok, ^id} =
+        Neuron.start_run(
+          Neuron.Coordinator.LeadGeneration,
+          %{domain: domain, fit_profile: fit_profile},
+          Keyword.put(opts, :id, id)
+        )
+    end
+
+    with {:ok, response} <- Neuron.await_run(id, Keyword.get(opts, :timeout, 900_000)) do
       {:ok, response.result}
     end
   end

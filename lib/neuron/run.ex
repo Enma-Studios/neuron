@@ -19,6 +19,7 @@ defmodule Neuron.Run do
   transition(:finished, from: :executing, to: :complete)
   transition(:failed, from: :planning, to: :failed)
   transition(:failed, from: :executing, to: :failed)
+  transition(:retry_pipeline, from: :failed, to: :processing, worker: Neuron.StageWorker)
   transition(:retry, from: :failed, to: :planning, worker: Neuron.RunWorker)
   transition(:cancel, from: :planning, to: :cancelled)
   transition(:cancel, from: :executing, to: :cancelled)
@@ -133,4 +134,9 @@ defmodule Neuron.StageWorker do
 
       reraise error, __STACKTRACE__
   end
+end
+
+defmodule Neuron.PipelinePlanner do
+  use Oban.Worker, queue: :agents, max_attempts: 5
+  defdelegate perform(job), to: Neuron.RunWorker
 end
