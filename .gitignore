@@ -2,7 +2,6 @@ mise.local.toml
 /_build/
 /deps/
 /tmp/
-/neuron_data/
 
 /*.db
 /*.db-*

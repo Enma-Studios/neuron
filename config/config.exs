@@ -17,7 +17,7 @@ config :neuron,
   ],
   embeddings: [provider: Neuron.Embedding.HTTP, dimensions: 384],
   browser: [preferred: :local, local: [], browser_use: []],
-  limits: [max_runs: 32, max_agents_per_run: 16, max_steps: 200, max_delegation_depth: 4],
+  limits: [max_runs: 32],
   prompts: []
 
 config :neuron, telemetry: [capture_payloads: false]
