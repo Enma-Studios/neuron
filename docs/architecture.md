@@ -10,7 +10,6 @@ that are useful to search and relate across runs.
 Neuron.Supervisor
 ├── Neuron.Storage       Mnesia schema, tables, transactions
 ├── Neuron.Dgraph        Dlex connection boundary
-├── Neuron.Outbox        retrying domain publisher
 ├── Neuron.RunRegistry   unique run and agent names
 ├── Neuron.RunSupervisor dynamic coordinator processes
 ├── Neuron.AgentSupervisor dynamic delegated workers
@@ -40,18 +39,19 @@ carry `run_id`, `agent_id`, and optional `parent_id`.
 ## Data boundaries
 
 Mnesia contains operational state: runs, agents, operations, ordered events,
-and outbox entries. Dgraph contains organizations, people, posts, accounts,
-requirements, evidence, campaign profiles, and other domain facts. The outbox
-prevents a Dgraph outage from destroying the local execution record.
+and migration records. Dgraph contains organizations, people, posts, accounts,
+requirements, evidence, campaign profiles, and other domain facts. Graph
+writes happen synchronously so the returned result reflects the persistence
+operation that actually completed.
 
 The graph schema is versioned in `Neuron.Graph.Schema`. Schema application is
 idempotent for the declared predicates and types; deployment tooling should
-run it against the target Dgraph endpoint before publishing domain facts.
+run it against the target Dgraph endpoint before running graph-backed research.
 
 Campaign orchestration sits above individual research attempts. Intake may
 pause for user answers or approval of multiple URL-derived proposals. The
 campaign layer owns the requested lead count, deduplicates attempts, and
-publishes a Campaign node linked to selected leads.
+writes a Campaign node linked to selected leads.
 
 ## End-to-end discovery
 
@@ -70,7 +70,7 @@ ranked URLs
 local Chromium / Pinocchio ── on blockage ── Browser Use / Pinocchio
   │
   ▼
-Htmd Markdown snapshot → embedding → transparent fit decision → outbox
+Htmd Markdown snapshot → embedding → transparent fit decision → graph upsert
 ```
 
 The search provider is deliberately separate from the Z.AI model provider.
@@ -102,4 +102,4 @@ large HTML bodies in the event stream.
 
 Research output is checked with Ecto after normalization. A failed shape check
 causes one model confirmation/repair pass with the validation errors before the
-run can publish to Dgraph.
+run can write to Dgraph.

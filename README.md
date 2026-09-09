@@ -4,7 +4,7 @@ Neuron is the durable OTP core for Neureni's agentic intelligence workflows. It
 runs coordinators and delegated agents as `gen_statem` processes, stores
 execution state in Mnesia, searches the web through Browser Use and
 DuckDuckGo, cleans source pages into Markdown, embeds the resulting evidence,
-and publishes domain facts to Dgraph through a retryable outbox.
+and writes domain facts to Dgraph synchronously when persistence is enabled.
 
 Source repository: <https://github.com/Enma-Studios/neuron>
 
@@ -33,10 +33,10 @@ A normal intelligence job follows this path:
 6. `Neuron.Lead` compares the candidate evidence with requirements and
    preferred geographies, returning a score, selection flag, matched evidence,
    and human-readable reasons.
-7. A durable outbox entry records the snapshot, embedding, and decision. The
-   outbox retries publication to Dgraph while the run remains complete locally.
+7. The result, snapshot, embedding, fit decision, and graph facts are returned
+   together; graph writes are performed synchronously when persistence is enabled.
 8. Every state change, fetch, model call, embedding, database transaction,
-   decision, and publication emits correlated telemetry.
+   decision, and graph write emits correlated telemetry.
 
 The default coordinator is an echo profile for smoke tests. The intelligence
 coordinator is the end-to-end profile described below.
@@ -52,10 +52,10 @@ coordinator is the end-to-end profile described below.
 - A Z.AI API key if model completion or Z.AI-specific endpoints are used
 - A Browser Use API key for Browser Use sessions and DuckDuckGo search
 
-The default development/test path can run without Dgraph or Chromium: Dgraph
-writes remain pending in the outbox and the browser adapter records a local
-blockage. Live search and live page fetching require the corresponding API
-key.
+The default development/test path can run without Dgraph or Chromium when
+callers set `persist: false` and use the test browser adapter. Live graph
+persistence, search, and page fetching require their corresponding services
+and credentials.
 
 ## Clone and install
 
@@ -126,7 +126,7 @@ iex -S mix
 ```
 
 The supervision tree starts, in order, durable storage, the Dgraph boundary,
-the outbox publisher, registries, dynamic run/agent supervisors, and recovery.
+registries, dynamic run/agent supervisors, and recovery.
 When active runs are found in Mnesia, `Neuron.Recovery` re-admits them to the
 run supervisor.
 
@@ -194,7 +194,7 @@ Neuron.provide_run("campaign-nyx", %{field: "cybersecurity", lead_count: 3})
 ```
 
 The completed result includes `campaign_run_id`, `target_count`, `leads`, and
-the attempt failures. Each attempt has its own run and outbox identity while
+the attempt failures. Each attempt has its own run identity while
 remaining correlated to the parent campaign run in telemetry.
 
 ### Start and inspect a run
@@ -300,7 +300,7 @@ Neuron.Intelligence.discover("B2B fintech payment platforms", fit_profile,
 ```
 
 The return value is a list of per-URL results. Each successful result contains
-`provider`, `snapshot`, `embedding`, `decision`, and `outbox_id`.
+`provider`, `snapshot`, `embedding`, and `decision`.
 
 The lower-level APIs are also available:
 
@@ -470,20 +470,17 @@ changes should add the next entry to `Neuron.Migrations`.
 with the declared fusion strategy; ranking fusion can be replaced without
 changing callers.
 
-### Outbox behavior
+### Graph persistence
 
-```elixir
-{:ok, outbox_id} = Neuron.Outbox.enqueue(run_id, :web_snapshot, payload)
-Neuron.Storage.pending_outbox()
-```
-
-The outbox entry is deterministic for the same `{run_id, kind, payload}`.
-Publication to Dgraph is retried on the configured interval. If Dgraph is
-unavailable, the local run remains inspectable and the entry remains pending.
+Research and intelligence workflows write their graph facts directly through
+`Neuron.Graph.upsert/2` and return only after that write succeeds. Pass
+`persist: false` for isolated tests or analysis that should return results
+without a Dgraph connection. A failed graph write is returned as an error and
+is visible in the correlated graph telemetry.
 
 ## Mnesia durability and recovery
 
-Mnesia tables contain runs, agents, operations, events, and outbox entries.
+Mnesia tables contain runs, agents, operations, events, and migration records.
 The configured default uses RocksDB copies through `mnesia_rocksdb`. The
 Mnesia schema table itself remains `disc_copies`, as required by Mnesia; all
 Neuron data tables use `rocksdb_copies` under the default backend.
@@ -521,7 +518,7 @@ Representative events include:
 [:neuron, :embedding, :embed]
 [:neuron, :db, :transaction]
 [:neuron, :graph, :upsert]
-[:neuron, :outbox, :publish]
+[:neuron, :graph, :upsert]
 [:neuron, :lead, :decision]
 ```
 
@@ -558,8 +555,8 @@ mix test
 ```
 
 The default suite excludes the `:integration` tag and does not require a
-running Dgraph instance. It covers state machines, durable events, outbox
-records, prompts, snapshots, lead explanations, and DuckDuckGo parsing.
+running Dgraph instance. It covers state machines, durable events, prompts,
+snapshots, lead explanations, and DuckDuckGo parsing.
 
 Run the Dgraph integration test with Podman:
 
@@ -607,7 +604,8 @@ blockage and tries Browser Use when its key is configured.
 **Dgraph is unavailable**
 
 Start the Podman harness or a Dgraph instance on the configured gRPC endpoint.
-Outbox entries remain pending until publication succeeds.
+Graph-backed runs return a structured graph error until Dgraph is available;
+use `persist: false` for provider-isolated checks.
 
 **Z.AI returns 401 or 429**
 

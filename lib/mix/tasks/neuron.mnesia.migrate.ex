@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Neuron.Mnesia.Migrate do
   @shortdoc "Initialize or upgrade Neuron's Mnesia tables"
   @moduledoc """
   Creates the durable Mnesia schema used for run state, operations, events,
-  and the publication outbox. Existing tables and records are preserved.
+  and migration records. Existing tables and records are preserved.
 
       mix neuron.mnesia.migrate
       mix neuron.mnesia.migrate --data-dir data/neuron --backend rocksdb

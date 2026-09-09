@@ -37,7 +37,7 @@ URL, or person name, and returns `{:ok, %{status: :target_met, leads: ...}}`.
 
 `Neuron.Research.run/3` composes DuckDuckGo discovery, source ranking, browser
 fetches, Htmd snapshots, Z.AI extraction, re-enrichment, outreach drafting,
-Ecto validation, embeddings, and a Dgraph outbox write.
+Ecto validation, embeddings, and a synchronous Dgraph graph write.
 
 `Neuron.Intelligence.explore/3` processes one URL and a fit decision;
 `explore_many/3` bounds parallel URLs; `discover/3` searches and explores
@@ -64,7 +64,7 @@ If normalized research fails validation, the model receives the output and
 changeset errors through `confirm_output.eex` for one bounded repair pass.
 
 `Neuron.Graph.Schema` versions the Dgraph ontology; `Neuron.Graph.upsert/2`
-publishes facts and `query/3` executes DQL. `Neuron.GraphSearch` provides
+writes facts and `query/3` executes DQL. `Neuron.GraphSearch` provides
 lexical, semantic, hybrid, profile, and fit-profile helpers. Organizations,
 people, posts, social accounts, clients, capabilities, requirements,
 leniencies, assertions, snapshots, campaigns, and leads are graph entities.
@@ -72,9 +72,9 @@ leniencies, assertions, snapshots, campaigns, and leads are graph entities.
 ## Durability and extension
 
 `Neuron.Storage` owns Mnesia runs, agents, operations, ordered events, and
-outbox records. `Neuron.Outbox.enqueue/3` is deterministic and retries until
-Dgraph accepts the domain mutation. `Neuron.Recovery` re-admits unfinished
-runs when enabled.
+migration records. Research and campaign workflows write graph facts directly
+through `Neuron.Graph.upsert/2`; `Neuron.Recovery` re-admits unfinished runs
+when enabled.
 
 Implement `Neuron.Coordinator` (`plan/2`, `run/2`) for a workflow and
 `Neuron.Agent.Worker` (`run/2`) for delegated work. Use `Neuron.spawn_agent/5`

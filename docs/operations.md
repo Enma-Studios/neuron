@@ -40,12 +40,9 @@ inspection, run Podman yourself and set `NEURON_DGRAPH_ENDPOINT` and
 `NEURON_DGRAPH_TRANSPORT` before
 starting Neuron.
 
-When Dgraph is down, `Neuron.Dgraph` keeps the application alive with a nil
-connection. Outbox entries stay `:pending` and are retried. Inspect them with:
-
-```elixir
-Neuron.Storage.pending_outbox()
-```
+When Dgraph is down, `Neuron.Dgraph` keeps the application alive with an
+unavailable connection. Graph-backed runs return a structured graph error;
+provider-isolated checks can pass `persist: false`.
 
 ## Mnesia data
 
@@ -177,8 +174,8 @@ Keep payload capture disabled unless the destination is access-controlled.
 - **Agent failed:** inspect `Neuron.get_agent/1` and the parent run events.
 - **Browser blocked:** inspect provider attempt/block events; retry with
   `provider: :browser_use` to isolate local Chromium problems.
-- **Outbox pending:** restore Dgraph connectivity; the publisher retries
-  automatically.
+- **Graph write failed:** restore Dgraph connectivity and rerun the operation,
+  or use `persist: false` for a provider-isolated check.
 - **Z.AI 401/429:** rotate the secret or restore the Z.AI resource package.
 - **Output shape confirmation:** inspect `research:confirm_output` telemetry.
   Neuron performs one repair pass with the Ecto errors and returns a structured
