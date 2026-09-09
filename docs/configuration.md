@@ -66,6 +66,8 @@ All browsing runs on Browser Use cloud browsers; there is no local browser provi
 
 Searches run on every enabled engine through `:neuron, :search, :engines` (DuckDuckGo, Google, Yandex, LinkedIn, X, and Reddit by default). The model tailors each query to its platform before anything runs: LinkedIn, X, and Reddit get native, operator-free queries, while the keyword engines keep operators such as `site:` and quoted phrases. Native LinkedIn and X search requires a logged-in `BROWSER_USE_PROFILE_ID`; without one those engines report a login gate and the remaining engines carry the round.
 
+Interaction-heavy pages (LinkedIn, X, Reddit, and other rendered feeds, configurable through `:neuron, :browser, :rich_hosts`) are never snapshotted whole: a bundled Turndown build is injected in the browser, and only the cleaned main section travels back as Markdown — both for search transcripts and for ingested source documents.
+
 Campaign searches run as one fleet wave: `sessions` Browser Use cloud sessions each multiplex `pages_per_session` concurrent tabs, so concurrency scales with pages rather than browser count — 2 x 8 = 16 concurrent pages by default. One sub-agent controls each page and returns a transcript (final URL, title, text, links); the model then harvests prospect URLs from the transcripts, and every harvested URL must literally appear in its transcript. `:neuron, :browser, :fleet` accepts `sessions`, `pages_per_session`, and `timeout`.
 
 ## Per-run options
