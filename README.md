@@ -71,6 +71,11 @@ and a reason for every requirement, geography decision, and final selection.
 cleanup, embedding, fit scoring, and durable outbox publication into one
 parallelizable run.
 
+`Neuron.Search.DuckDuckGo` performs search through Browser Use's browser
+session, so search pages follow the same traceable fetch and snapshot path as
+direct source URLs. `Neuron.Intelligence.discover/3` searches first and then
+explores the returned links in parallel.
+
 ## Traceability
 
 Every side effect emits `[:neuron, ...]` telemetry with `trace_id`, `run_id`,

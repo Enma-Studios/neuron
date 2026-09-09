@@ -57,6 +57,13 @@ defmodule Neuron.Intelligence do
     end)
   end
 
+  def discover(query, fit_profile, opts \\ []) when is_binary(query) do
+    with {:ok, results} <- Neuron.Search.web(query, opts) do
+      urls = Enum.map(results, & &1.url)
+      explore_many(urls, fit_profile, opts)
+    end
+  end
+
   defp snapshot(page, url, opts) do
     html = page[:html] || page["html"]
 
