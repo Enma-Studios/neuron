@@ -29,10 +29,18 @@ if config_env() == :prod do
 
   config :pinocchio,
     browser:
-      (if File.exists?(chromium) do
+      (if chromium do
          [executable: chromium, args: ["--headless=new", "--disable-dev-shm-usage"]]
        else
          [executable: nil, endpoint: nil, provider: nil]
        end),
     pool: [size: String.to_integer(System.get_env("NEURON_BROWSER_POOL_SIZE", "4"))]
+end
+
+if endpoint = System.get_env("NEURON_EMBEDDING_ENDPOINT") do
+  config :neuron, :embeddings,
+    endpoint: endpoint,
+    model: System.fetch_env!("NEURON_EMBEDDING_MODEL"),
+    api_key: System.get_env("NEURON_EMBEDDING_API_KEY"),
+    dimensions: String.to_integer(System.get_env("NEURON_EMBEDDING_DIMENSIONS", "384"))
 end

@@ -36,16 +36,9 @@ defmodule Neuron.MixProject do
       {:htmd, "~> 0.2", optional: false}
     ]
 
-    ml_deps =
-      if System.get_env("NEURON_ENABLE_LOCAL_ML") == "true" do
-        [{:nx, "~> 0.9"}, {:bumblebee, "~> 0.7"}, {:exla, "~> 0.9"}]
-      else
-        []
-      end
-
     pinocchio =
       {:pinocchio, git: "git@github.com:Enma-Studios/pinocchio.git", branch: "main"}
 
-    base_deps ++ ml_deps ++ [pinocchio]
+    base_deps ++ [pinocchio]
   end
 end
