@@ -22,22 +22,27 @@ defmodule Neuron.Research do
                re_enrich(domain, fit_profile, extraction, search_results, pages, opts),
              {:ok, drafts} <- draft_emails(domain, enriched, pages, opts) do
           result = normalize_result(domain, fit_profile, enriched, drafts, pages, opts)
-          graph = graph_facts(result, pages, opts)
 
-          {:ok, outbox_id} =
-            Neuron.Outbox.enqueue(run_id, :research_bundle, %{
-              domain: domain,
-              target_profile: result.target_profile,
-              organization: result.organization,
-              people: result.people,
-              leads: result.leads,
-              posts: result.posts,
-              drafts: result.drafts,
-              assertions: result.assertions,
-              graph: graph
-            })
+          with {:ok, _validated} <- Neuron.Schemas.validate_research(result) do
+            graph = graph_facts(result, pages, opts)
 
-          {:ok, Map.merge(result, %{run_id: run_id, outbox_id: outbox_id, sources: pages})}
+            {:ok, outbox_id} =
+              Neuron.Outbox.enqueue(run_id, :research_bundle, %{
+                domain: domain,
+                target_profile: result.target_profile,
+                organization: result.organization,
+                people: result.people,
+                leads: result.leads,
+                posts: result.posts,
+                drafts: result.drafts,
+                assertions: result.assertions,
+                graph: graph
+              })
+
+            {:ok, Map.merge(result, %{run_id: run_id, outbox_id: outbox_id, sources: pages})}
+          else
+            {:error, errors} -> {:error, {:invalid_research_result, errors}}
+          end
         end
       end
     )
