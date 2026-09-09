@@ -30,6 +30,8 @@ defmodule Neuron.MixProject do
       {:postgrex, "~> 0.21"},
       {:oban, "~> 2.24"},
       {:gen_stage, "~> 1.3"},
+      {:bumblebee, "~> 0.7"},
+      {:exla, "~> 0.12"},
       {:owl, "~> 0.13"},
       {:telemetry, "~> 1.3"},
       {:req, "~> 0.5"},

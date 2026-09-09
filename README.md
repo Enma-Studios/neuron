@@ -4,7 +4,7 @@
 
 Oban executes a durable state machine on an Ecto repository. Standalone development uses SQLite. A host application can supply its Postgres repository and Oban instance. Neuron has no Phoenix dependency.
 
-Dgraph stores domain knowledge: organizations, people, relationships, sources, snapshots, posts, requirements, clients, assertions, and campaign leads. SQL stores execution state, stage checkpoints, output snapshots, raw prompts, model responses, and event history.
+Dgraph stores domain knowledge: organizations, people, relationships, sources, snapshots, posts, requirements, clients, assertions, and campaign leads. SQL stores execution state, stage checkpoints, output snapshots, selection reservations, and transition history. Prompt/model traces use telemetry.
 
 ## Setup
 
@@ -25,13 +25,12 @@ Configure the live services in your shell or application's runtime configuration
 export ZAI_API_KEY='...'
 export BROWSER_USE_API_KEY='...'
 export CHROMIUM=/usr/bin/chromium
-export NEURON_EMBEDDING_ENDPOINT='http://localhost:8000/v1/embeddings'
-export NEURON_EMBEDDING_MODEL='your-provisioned-model'
-export NEURON_EMBEDDING_DIMENSIONS=384
-# Set NEURON_EMBEDDING_API_KEY if that service requires authentication.
+mix neuron.models.fetch
+# Downloads pinned intfloat/multilingual-e5-small files into priv/models.
+
 ```
 
-The embedding endpoint is a service **you provision**, implementing the OpenAI-compatible embeddings request/response format. Neuron requires genuine vectors with the configured dimension; missing configuration and service failures fail the job. ZAI generation always uses `glm-5.3-flash`. Search uses DuckDuckGo through Browser Use; source browsing prefers local Chromium and can switch providers after a reported browser failure.
+Embeddings run locally inside the BEAM using Bumblebee, Nx.Serving and EXLA. Install a C++ compiler (Debian/Ubuntu: `sudo apt-get install g++`) before compiling dependencies. Model files stay under ignored `priv/models` and must be downloaded before startup or release packaging. Runtime never calls an embedding endpoint. ZAI generation always uses `glm-5.3-flash`. Search uses DuckDuckGo through Browser Use; source browsing prefers local Chromium.
 
 ## Interactive use
 
@@ -53,7 +52,7 @@ quit
 
 Campaign intake asks at most eight fields: organization, field, offer, target roles, target organizations, geography, exclusions, and lead count. A supplied URL is scraped to fill those fields. Multiple inferred campaigns require approval. The console starts runs asynchronously and returns their IDs; use `show` to inspect results.
 
-Campaign and research attempt run IDs are UUIDs. Attempt telemetry and research options carry the campaign UUID as `parent_run_id` for correlation.
+Campaign and research attempt run IDs are UUIDs. A stable `campaign_id` groups executions; `parent_run_id` links ingestion children to their executing parent. Reuse the normalized campaign brief to suppress previously returned people across its runs.
 
 ## Library use
 
@@ -63,6 +62,7 @@ Campaign and research attempt run IDs are UUIDs. Attempt telemetry and research 
   field: "security",
   offer: "Security research partnership",
   target_roles: ["Founder", "Head of Security"],
+  target_organizations: ["Software companies"],
   geography: ["United Kingdom"],
   exclusions: ["branch offices"],
   lead_count: 3
@@ -92,7 +92,7 @@ result.leads
 result.source_urls
 ```
 
-This researches the supplied organization and its contacts. Campaign attempts repeat that research and deduplicate contacts; they do not yet implement autonomous discovery of new target accounts across an entire market.
+The standalone research API researches a specified organization. Campaigns instead treat the initial organization as the seller and search for external prospects using approved market, role, and geography criteria.
 
 User assertions take precedence in reconciliation prompts. Source preference is advisory; contact qualification favors official company evidence, corroborated professional profiles, and company email addresses. Ecto embedded schemas validate domain outputs, and the model is asked to repair invalid final research output. Empty verified results remain empty.
 

@@ -20,6 +20,7 @@ defmodule Neuron.Application do
     Supervisor.start_link(
       repo_children ++
         oban_children ++
+        Neuron.Embedding.children() ++
         [
           {Neuron.Dgraph, []},
           {DynamicSupervisor, name: Neuron.PipelineSupervisor, strategy: :one_for_one}

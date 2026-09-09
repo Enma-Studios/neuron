@@ -15,7 +15,15 @@ config :neuron,
     model: "glm-5.3-flash",
     base_url: "https://api.z.ai/api/paas/v4"
   ],
-  embeddings: [provider: Neuron.Embedding.HTTP, dimensions: 384],
+  embeddings: [
+    provider: Neuron.Embedding.Local,
+    model: "intfloat/multilingual-e5-small",
+    revision: "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+    directory: "models/multilingual-e5-small",
+    dimensions: 384,
+    batch_size: 4,
+    sequence_length: 512
+  ],
   browser: [
     preferred: :local,
     local: [],

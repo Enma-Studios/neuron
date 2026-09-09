@@ -56,13 +56,9 @@ Alternatively, set `start_repo: true` and `start_oban: true` and put the Postgre
 | `BROWSER_USE_PROFILE_ID` | Optional; Browser Use profile sent to new sessions when set |
 | `CHROMIUM` | Chromium executable path; common system paths are detected |
 | `NEURON_BROWSER_POOL_SIZE` | `4` in production |
-| `NEURON_EMBEDDING_ENDPOINT` | Required when using the supplied HTTP embedding provider |
-| `NEURON_EMBEDDING_MODEL` | Required alongside the endpoint |
-| `NEURON_EMBEDDING_DIMENSIONS` | `384`; must match returned vectors |
-| `NEURON_EMBEDDING_API_KEY` | Optional endpoint authentication |
 | `NEURON_CAPTURE_PAYLOADS` | `false`; production telemetry payload setting |
 
-Generation uses only `glm-5.3-flash`; passing another model name does not select a different model. The embedding model is independent of text generation. An embedding endpoint accepts `{"model": "...", "input": "..."}` and returns `{"data": [{"embedding": [0.1, ...]}]}`. There is no synthetic vector provider in normal configuration.
+Generation uses only `glm-5.3-flash`; passing another model name does not select a different model. The embedding model is independent of text generation and runs locally in the BEAM. There is no remote embedding provider.
 
 Local browsing uses Pinocchio's configured executable/session pool. Browser Use is the explicit alternate browser provider. DuckDuckGo requests start with Browser Use and can try local browsing after a reported failure. Neuron traces each provider attempt. Missing infrastructure is never replaced with fabricated output.
 
@@ -71,3 +67,17 @@ Local browsing uses Pinocchio's configured executable/session pool. Browser Use 
 Common options are `id:`, `trace_id:`, and `timeout:`. The timeout for `await_run` only bounds waiting. Research additionally accepts `queries:`, `max_sources:` (8), `search_concurrency:` (2), `browser_concurrency:` (3), `re_enrich:` (true), `assertions:`, and `persist:` (true). Campaign collection accepts `max_attempts:` (3).
 
 `persist: false` is an explicit no-graph-write operation; it does not claim successful ingestion. Fixtures may supply browser `adapter:` and `model_provider:` modules. Durable inputs and options may contain module atoms but cannot contain functions, processes, ports, or references. Avoid placing API keys in durable per-run options; configure secrets at application level.
+
+## Local embeddings
+
+Run `mix neuron.models.fetch` to download pinned `intfloat/multilingual-e5-small` files into `priv/models/multilingual-e5-small`. The model uses 384 dimensions, mean pooling, and L2 normalization. Query inputs receive `query: `; documents receive `passage: `. See the [model card](https://huggingface.co/intfloat/multilingual-e5-small).
+
+Configure `:neuron, :embeddings` through application config: `model`, `revision`, `directory` (relative to priv), `dimensions`, `batch_size` (4), and `sequence_length` (512). Run the download task before building a release. Startup checks the local manifest and fails if it is missing or does not match configuration. EXLA requires a C++ compiler. Model weights are not committed to Git.
+
+Do not mix embedding models or dimensions in an existing graph index: re-ingest/reindex the corpus before switching the query model.
+
+## Campaign budgets and ranking
+
+Campaign run options: `max_rounds: 3`, `max_queries: 12`, `max_pages: 32`, `batch_size: 8`, `budget_seconds: 1800`, and `search_concurrency: 2`. The time budget stops new scheduling; in-flight batches finish. The requested lead count is a target, not a truncation limit.
+
+Selection options: `selection_threshold: 0.5` and `weights` (market 0.35, role 0.20, geography 0.15, evidence 0.15, freshness 0.15). Market relevance combines lexical fit and embedding similarity equally. Freshness decays with a 90-day half-life. Contact evidence and explicit exclusions are hard eligibility checks, independent of score.

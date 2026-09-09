@@ -2,6 +2,7 @@ mise.local.toml
 /_build/
 /deps/
 /tmp/
+/priv/models/
 
 /*.db
 /*.db-*

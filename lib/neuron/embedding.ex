@@ -1,41 +1,68 @@
 defmodule Neuron.Embedding do
   @moduledoc "Embedding provider contract. Ingestion requires real vectors from the configured provider."
   @callback embed(String.t(), keyword()) :: {:ok, [float()]} | {:error, term()}
+  def children do
+    case provider() do
+      Neuron.Embedding.Local -> [{Neuron.Embedding.Local, []}]
+      _ -> []
+    end
+  end
+
   def provider, do: Application.fetch_env!(:neuron, :embeddings) |> Keyword.fetch!(:provider)
 end
 
-defmodule Neuron.Embedding.HTTP do
-  @moduledoc "Calls an explicitly configured OpenAI-compatible embeddings endpoint."
+defmodule Neuron.Embedding.Local do
+  @moduledoc "Bumblebee sentence embeddings batched inside the BEAM with EXLA."
   @behaviour Neuron.Embedding
+  def child_spec(_opts) do
+    %{id: __MODULE__, start: {__MODULE__, :start_link, [[]]}, type: :supervisor}
+  end
+
+  def start_link(_opts) do
+    config = Application.fetch_env!(:neuron, :embeddings)
+    directory = Application.app_dir(:neuron, "priv/" <> Keyword.fetch!(config, :directory))
+
+    unless File.exists?(Path.join(directory, "neuron_model.json")),
+      do: raise("embedding model missing; run mix neuron.models.fetch before starting Neuron")
+
+    manifest = File.read!(Path.join(directory, "neuron_model.json")) |> Jason.decode!()
+
+    true =
+      manifest["model"] == Keyword.fetch!(config, :model) and
+        manifest["revision"] == Keyword.fetch!(config, :revision)
+
+    repository = {:local, directory}
+    {:ok, model} = Bumblebee.load_model(repository)
+    {:ok, tokenizer} = Bumblebee.load_tokenizer(repository)
+
+    serving =
+      Bumblebee.Text.text_embedding(model, tokenizer,
+        output_attribute: :hidden_state,
+        output_pool: :mean_pooling,
+        embedding_processor: :l2_norm,
+        compile: [
+          batch_size: Keyword.fetch!(config, :batch_size),
+          sequence_length: Keyword.fetch!(config, :sequence_length)
+        ],
+        defn_options: [compiler: EXLA]
+      )
+
+    Nx.Serving.start_link(name: __MODULE__, serving: serving, batch_timeout: 10)
+  end
+
   @impl true
   def embed(text, opts \\ []) do
-    config = Application.fetch_env!(:neuron, :embeddings)
-    endpoint = Keyword.fetch!(config, :endpoint)
-    model = Keyword.fetch!(config, :model)
-    dimensions = Keyword.fetch!(config, :dimensions)
+    Neuron.Telemetry.span([:embedding, :local], Neuron.Telemetry.trace_metadata(opts), fn ->
+      text =
+        if opts[:embedding_purpose] == :query, do: "query: " <> text, else: "passage: " <> text
 
-    headers =
-      case config[:api_key] do
-        nil -> []
-        key -> [{"authorization", "Bearer " <> key}]
-      end
+      %{embedding: embedding} = Nx.Serving.batched_run(__MODULE__, text)
+      vector = Nx.to_flat_list(embedding)
+      dimensions = Application.fetch_env!(:neuron, :embeddings) |> Keyword.fetch!(:dimensions)
 
-    Neuron.Telemetry.span([:embedding, :embed], Neuron.Telemetry.trace_metadata(opts), fn ->
-      with {:ok, response} <-
-             Req.post(endpoint,
-               headers: headers,
-               json: %{model: model, input: text},
-               retry: false
-             ),
-           %{status: 200, body: %{"data" => [%{"embedding" => vector}]}} <- response,
-           true <-
-             is_list(vector) and length(vector) == dimensions and Enum.all?(vector, &is_number/1) do
-        {:ok, Enum.map(vector, &(&1 * 1.0))}
-      else
-        false -> {:error, :invalid_embedding_dimensions}
-        {:error, reason} -> {:error, reason}
-        response -> {:error, {:embedding_response, response}}
-      end
+      if length(vector) == dimensions and Enum.all?(vector, &is_number/1),
+        do: {:ok, vector},
+        else: {:error, :invalid_embedding_dimensions}
     end)
   end
 end

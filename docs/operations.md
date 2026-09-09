@@ -71,4 +71,4 @@ NEURON_TEST_POSTGRES_URL=postgres://user:password@localhost/neuron_test mix test
 
 The Podman script creates and removes its own temporary Postgres container. The suite verifies the same Ecto migration and FSM operations with Oban's Basic engine.
 
-A live research run additionally requires functioning ZAI, Browser Use, Chromium, and an embedding service. Unit fixtures do not verify those services. Infrastructure errors remain errors and must be fixed in the environment.
+A live research run additionally requires functioning ZAI, Browser Use, Chromium, and the downloaded local embedding model. Unit fixtures do not verify those services. Infrastructure errors remain errors and must be fixed in the environment.
