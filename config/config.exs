@@ -15,11 +15,15 @@ config :neuron,
 
 config :neuron, telemetry: [capture_payloads: false]
 
+chromium = System.get_env("CHROMIUM", "/usr/bin/chromium")
+
 config :pinocchio,
-  browser: [
-    executable: "/usr/bin/chromium",
-    args: ["--headless=new", "--disable-dev-shm-usage"]
-  ],
+  browser:
+    (if File.exists?(chromium) do
+       [executable: chromium, args: ["--headless=new", "--disable-dev-shm-usage"]]
+     else
+       [executable: nil, endpoint: nil, provider: nil]
+     end),
   pool: [size: 4, checkout_timeout: 30_000]
 
 config :mnesia, dir: String.to_charlist("priv/neuron_data")

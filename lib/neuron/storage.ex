@@ -109,6 +109,7 @@ defmodule Neuron.Storage do
 
     with :ok <- ensure_schema(),
          :ok <- start_mnesia(),
+         :ok <- ensure_disc_schema(),
          :ok <- register_rocksdb(config),
          :ok <- create_tables(config) do
       {:ok, %{backend: config[:backend] || :mnesia}}
@@ -131,6 +132,25 @@ defmodule Neuron.Storage do
       :ok -> :ok
       {:error, {:already_started, _}} -> :ok
       {:error, reason} -> {:error, {:mnesia_start, reason}}
+    end
+  end
+
+  defp ensure_disc_schema do
+    case :mnesia.table_info(:schema, :storage_type) do
+      :disc_copies ->
+        :ok
+
+      :ram_copies ->
+        current_node = node()
+
+        case :mnesia.change_table_copy_type(:schema, current_node, :disc_copies) do
+          {:atomic, :ok} -> :ok
+          {:aborted, {:already_exists, :schema, ^current_node, :disc_copies}} -> :ok
+          {:aborted, reason} -> {:error, {:mnesia_schema_storage, reason}}
+        end
+
+      other ->
+        {:error, {:mnesia_schema_storage, other}}
     end
   end
 
