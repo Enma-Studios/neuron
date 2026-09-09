@@ -1,7 +1,7 @@
 defmodule Neuron.Graph.Schema do
   @moduledoc "Versioned Dgraph predicates for the shared knowledge graph."
 
-  @version 1
+  @version 2
 
   def version, do: @version
 
@@ -34,22 +34,202 @@ defmodule Neuron.Graph.Schema do
       confidence: float
       observed_at: datetime
     }
+    type Organization {
+      name: string
+      domain: string
+      description: string
+      industry: string
+      organization_type: string
+      founded_at: datetime
+      headquarters: uid
+      geographies: [uid]
+      social_accounts: [uid]
+      people: [uid]
+      posts: [uid]
+      clients: [uid]
+      requirements: [uid]
+      leniencies: [uid]
+      sources: [uid]
+      assertions: [uid]
+      embedding: float32vector
+    }
+    type Person {
+      name: string
+      title: string
+      bio: string
+      location: uid
+      employer: uid
+      social_accounts: [uid]
+      posts: [uid]
+      skills: [string]
+      requirements: [uid]
+      leniencies: [uid]
+      sources: [uid]
+      assertions: [uid]
+      embedding: float32vector
+    }
+    type SocialAccount {
+      platform: string
+      handle: string
+      profile_url: string
+      display_name: string
+      followers: int
+      following: int
+      verified: bool
+      owner: uid
+      posts: [uid]
+      sources: [uid]
+      embedding: float32vector
+    }
+    type Post {
+      body: string
+      title: string
+      url: string
+      published_at: datetime
+      author: uid
+      organization: uid
+      social_account: uid
+      topics: [string]
+      geographies: [uid]
+      sources: [uid]
+      assertions: [uid]
+      embedding: float32vector
+    }
+    type Geography {
+      name: string
+      country_code: string
+      kind: string
+      parent: uid
+      children: [uid]
+      organizations: [uid]
+      people: [uid]
+      posts: [uid]
+      embedding: float32vector
+    }
+    type Requirement {
+      category: string
+      description: string
+      priority: float
+      required_by: uid
+      applies_to: uid
+      geographies: [uid]
+      evidence: [uid]
+      embedding: float32vector
+    }
+    type Leniency {
+      category: string
+      description: string
+      score: float
+      subject: uid
+      geographies: [uid]
+      evidence: [uid]
+      embedding: float32vector
+    }
+    type ClientProfile {
+      name: string
+      summary: string
+      industry: string
+      organization: uid
+      client_of: uid
+      requirements: [uid]
+      geographies: [uid]
+      evidence: [uid]
+      embedding: float32vector
+    }
+    type Campaign {
+      name: string
+      objective: string
+      fit_profiles: [uid]
+      target_organizations: [uid]
+      target_people: [uid]
+      target_geographies: [uid]
+      required_capabilities: [uid]
+      excluded_requirements: [uid]
+      sources: [uid]
+    }
+    type FitProfile {
+      name: string
+      description: string
+      campaign: uid
+      target_organizations: [uid]
+      target_people: [uid]
+      required_capabilities: [uid]
+      preferred_geographies: [uid]
+      requirements: [uid]
+      leniencies: [uid]
+      exclusions: [uid]
+      embedding: float32vector
+    }
+
     name: string @index(term, trigram) .
     domain: string @index(exact) .
     profile_url: string @index(exact) .
     description: string @index(fulltext) .
+    industry: string @index(term, trigram) .
+    organization_type: string @index(term) .
+    founded_at: datetime .
+    headquarters: uid @reverse .
+    geographies: [uid] @reverse .
+    social_accounts: [uid] @reverse .
+    people: [uid] @reverse .
+    organizations: [uid] @reverse .
+    posts: [uid] @reverse .
+    clients: [uid] @reverse .
+    requirements: [uid] @reverse .
+    leniencies: [uid] @reverse .
+    sources: [uid] @reverse .
+    assertions: [uid] @reverse .
+    title: string @index(term, trigram) .
+    bio: string @index(fulltext) .
+    location: uid @reverse .
+    employer: uid @reverse .
+    skills: [string] @index(term, fulltext) .
+    platform: string @index(exact) .
+    handle: string @index(exact, trigram) .
+    display_name: string @index(term) .
+    followers: int .
+    following: int .
+    verified: bool .
+    owner: uid @reverse .
+    body: string @index(fulltext, term) .
     url: string @index(exact) .
-    title: string @index(term) .
-    fetched_at: datetime .
+    published_at: datetime .
+    author: uid @reverse .
+    organization: uid @reverse .
+    social_account: uid @reverse .
+    topics: [string] @index(term, fulltext) .
+    country_code: string @index(exact) .
+    kind: string @index(term) .
+    parent: uid @reverse .
+    children: [uid] @reverse .
+    category: string @index(term) .
+    priority: float .
+    required_by: uid @reverse .
+    applies_to: uid @reverse .
+    evidence: [uid] @reverse .
+    score: float .
+    subject: uid @reverse .
+    summary: string @index(fulltext) .
+    client_of: uid @reverse .
+    campaign: uid @reverse .
+    fit_profiles: [uid] @reverse .
+    objective: string @index(fulltext) .
+    target_organizations: [uid] @reverse .
+    target_people: [uid] @reverse .
+    target_geographies: [uid] @reverse .
+    required_capabilities: [uid] @reverse .
+    excluded_requirements: [uid] @reverse .
+    exclusions: [uid] @reverse .
+    preferred_geographies: [uid] @reverse .
     markdown: string @index(fulltext) .
     content_hash: string @index(exact) .
     extraction_version: int .
     excerpt: string @index(fulltext) .
-    confidence: float .
+    confidence: float @index(float) .
     observed_at: datetime .
     predicate: string .
     embedding: float32vector @index(hnsw(metric:"cosine")) .
-    body: string @index(fulltext) .
+    fetched_at: datetime .
     """
   end
 
