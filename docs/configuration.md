@@ -40,6 +40,18 @@ The default local Dgraph HTTP API is `localhost:8080`. For a gRPC endpoint:
 NEURON_DGRAPH_ENDPOINT=localhost:9080 NEURON_DGRAPH_TRANSPORT=grpc mix run -e 'IO.inspect(Neuron.Dgraph.connection())'
 ```
 
+Apply the durable schemas with Mix tasks:
+
+```sh
+mix neuron.mnesia.migrate
+mix neuron.dgraph.migrate
+mix neuron.dgraph.migrate --endpoint localhost:9080 --transport grpc
+```
+
+Both migrations are safe to repeat. The Mnesia task accepts `--data-dir` and
+`--backend mnesia|rocksdb`; the Dgraph task accepts `--endpoint` and
+`--transport http|grpc`.
+
 The main application keys are `storage`, `dgraph`, `model`, `browser`,
 `limits`, `recovery`, `prompts`, `embeddings`, and `telemetry`. Per-call
 options can override `run_id`, `trace_id`, `task_id`, `operation_id`,

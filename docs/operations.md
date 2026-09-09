@@ -60,6 +60,22 @@ Back up the configured data directory with the application stopped. Do not
 delete it during a running release. For disposable tests, use the test
 directory or a clean temporary directory.
 
+Run the Mnesia schema migration after provisioning a new data directory or
+upgrading Neuron:
+
+```sh
+mix neuron.mnesia.migrate --data-dir /var/lib/neuron
+```
+
+Apply the Dgraph predicates and indexes separately. The local HTTP endpoint is
+`localhost:8080`; use the gRPC listener on `localhost:9080` when selecting the
+gRPC transport:
+
+```sh
+mix neuron.dgraph.migrate
+mix neuron.dgraph.migrate --endpoint localhost:9080 --transport grpc
+```
+
 ## Browser health
 
 Check the executable selected by Neuron:

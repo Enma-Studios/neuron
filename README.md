@@ -440,6 +440,22 @@ Neuron.GraphSearch.profiles("fintech")
 Neuron.GraphSearch.fit_profiles("US payment platforms")
 ```
 
+For repeatable deployments, use the built-in migration tasks. Mnesia
+migration is local and preserves existing run records; Dgraph schema
+application is idempotent and uses the configured endpoint:
+
+```sh
+mix neuron.mnesia.migrate
+mix neuron.dgraph.migrate
+
+# Dgraph's gRPC listener, when HTTP and gRPC are exposed separately
+mix neuron.dgraph.migrate --endpoint localhost:9080 --transport grpc
+```
+
+The default Dgraph connection remains HTTP at `localhost:8080`. Set
+`NEURON_DGRAPH_ENDPOINT` and `NEURON_DGRAPH_TRANSPORT` for a release, or pass
+the endpoint and transport to the Dgraph migration task.
+
 `GraphSearch.hybrid/3` currently returns the lexical and semantic result sets
 with the declared fusion strategy; ranking fusion can be replaced without
 changing callers.
