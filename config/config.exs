@@ -1,7 +1,10 @@
 import Config
 
 config :neuron,
-  storage: [data_dir: "priv/neuron_data", backend: :rocksdb],
+  repo: Neuron.Repo,
+  oban_name: Neuron.Oban,
+  start_repo: true,
+  start_oban: true,
   dgraph: [
     endpoint: System.get_env("NEURON_DGRAPH_ENDPOINT", "localhost:9080"),
     transport: String.to_atom(System.get_env("NEURON_DGRAPH_TRANSPORT", "grpc")),
@@ -15,7 +18,6 @@ config :neuron,
   embeddings: [provider: Neuron.Embedding.Local, model: "BAAI/bge-small-en-v1.5", dimensions: 384],
   browser: [preferred: :local, local: [], browser_use: []],
   limits: [max_runs: 32, max_agents_per_run: 16, max_steps: 200, max_delegation_depth: 4],
-  recovery: [enabled: System.get_env("NEURON_RECOVERY_ENABLED", "true") == "true"],
   prompts: [path: "priv/prompts"]
 
 config :neuron, telemetry: [capture_payloads: false]
@@ -36,6 +38,18 @@ config :pinocchio,
      end),
   pool: [size: 4, checkout_timeout: 30_000]
 
-config :mnesia, dir: String.to_charlist("priv/neuron_data")
+config :neuron, ecto_repos: [Neuron.Repo]
+
+config :neuron, Neuron.Repo,
+  database: System.get_env("NEURON_DATABASE", "neuron.db"),
+  pool_size: 5,
+  busy_timeout: 15_000,
+  journal_mode: :wal
+
+config :neuron, :oban,
+  engine: Oban.Engines.Lite,
+  notifier: Oban.Notifiers.PG,
+  queues: [orchestrators: 4, agents: 8],
+  plugins: [{Oban.Plugins.Pruner, max_age: 86_400}]
 
 import_config "#{config_env()}.exs"

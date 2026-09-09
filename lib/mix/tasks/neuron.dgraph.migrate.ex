@@ -36,62 +36,17 @@ defmodule Mix.Tasks.Neuron.Dgraph.Migrate do
     Application.put_env(:neuron, :dgraph, dgraph)
     Mix.Task.run("app.start")
 
-    with {:ok, _storage} <- Neuron.Storage.migrate(),
-         connection when not is_nil(connection) <- Neuron.Dgraph.connection() do
-      apply_pending_migrations(connection)
-    else
-      nil -> Mix.raise("Dgraph is unavailable at #{inspect(dgraph[:endpoint])}")
-      {:error, reason} -> Mix.raise("Dgraph migration preparation failed: #{inspect(reason)}")
-    end
-  end
+    connection = Neuron.Dgraph.connection()
+    repo = Neuron.Persistence.repo()
+    path = Application.app_dir(:neuron, "priv/dgraph/migrations")
 
-  defp apply_pending_migrations(connection) do
-    applied = Neuron.Storage.migration_status(:dgraph)
+    for file <- Path.wildcard(Path.join(path, "*.dql")) |> Enum.sort() do
+      version = Path.basename(file)
 
-    with records when is_list(records) <- applied do
-      applied_versions = Enum.map(records, &elem(&1, 3))
-
-      pending = Neuron.Migrations.pending(:dgraph, applied_versions)
-
-      migrations =
-        if pending == [], do: [{Neuron.Graph.Schema.version(), "graph_schema"}], else: pending
-
-      Enum.each(migrations, fn {version, name} ->
-        case Neuron.Graph.Schema.apply(connection,
-               task_id: "migration:dgraph:v#{version}",
-               migration_version: version
-             ) do
-          {:ok, _} ->
-            record_migration(version, name, applied_versions)
-
-          :ok ->
-            record_migration(version, name, applied_versions)
-
-          {:error, reason} ->
-            Mix.raise("Dgraph schema migration v#{version} failed: #{inspect(reason)}")
-
-          other ->
-            Mix.raise("Dgraph schema migration v#{version} failed: #{inspect(other)}")
-        end
-      end)
-
-      current = Neuron.Graph.Schema.version()
-      Mix.shell().info("Dgraph migration complete (v#{current})")
-    else
-      {:error, reason} -> Mix.raise("Dgraph migration status failed: #{inspect(reason)}")
-    end
-  end
-
-  defp record_migration(version, name, applied_versions) do
-    if version in applied_versions do
-      :ok
-    else
-      case Neuron.Storage.record_migration(:dgraph, version, name) do
-        :ok ->
-          :ok
-
-        {:error, reason} ->
-          Mix.raise("Dgraph migration v#{version} could not be recorded: #{inspect(reason)}")
+      unless repo.get(Neuron.GraphMigration, version) do
+        {:ok, _} = Dlex.alter(connection, File.read!(file))
+        repo.insert!(%Neuron.GraphMigration{version: version})
+        Mix.shell().info("Applied Dgraph #{version}")
       end
     end
   end

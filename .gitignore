@@ -3,3 +3,6 @@ mise.local.toml
 /deps/
 /tmp/
 /priv/neuron_data/
+
+/*.db
+/*.db-*

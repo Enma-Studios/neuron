@@ -2,7 +2,6 @@ import Config
 
 if config_env() == :prod do
   config :neuron,
-    storage: [data_dir: System.get_env("NEURON_DATA_DIR", "data/neuron")],
     dgraph: [
       endpoint: System.get_env("NEURON_DGRAPH_ENDPOINT", "localhost:9080"),
       transport: String.to_atom(System.get_env("NEURON_DGRAPH_TRANSPORT", "grpc")),
@@ -19,7 +18,7 @@ if config_env() == :prod do
       browser_use: [api_key: System.get_env("BROWSER_USE_API_KEY")]
     ]
 
-  config :mnesia, dir: String.to_charlist(System.get_env("NEURON_DATA_DIR", "data/neuron"))
+  config :neuron, Neuron.Repo, database: System.fetch_env!("NEURON_DATABASE")
 
   chromium =
     System.get_env("CHROMIUM") ||

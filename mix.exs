@@ -8,6 +8,7 @@ defmodule Neuron.MixProject do
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      aliases: [test: ["neuron.migrate", "test"]],
       source_url: "https://github.com/Enma-Studios/neuron",
       elixirc_options: [warnings_as_errors: true]
     ]
@@ -16,20 +17,23 @@ defmodule Neuron.MixProject do
   def application do
     [
       mod: {Neuron.Application, []},
-      extra_applications: [:logger, :crypto, :inets, :ssl, :mnesia]
+      extra_applications: [:logger, :crypto, :inets, :ssl]
     ]
   end
 
   defp deps do
     base_deps = [
       {:jason, "~> 1.4"},
-      {:ecto, "~> 3.12"},
+      {:ecto_sql, "~> 3.13"},
+      {:ecto_sqlite3, "~> 0.22"},
+      {:postgrex, "~> 0.21"},
+      {:oban, "~> 2.20"},
+      {:gen_stage, "~> 1.3"},
+      {:owl, "~> 0.13"},
       {:telemetry, "~> 1.3"},
       {:req, "~> 0.5"},
-      {:dlex, github: "Enma-Studios/dlex", branch: "master", optional: true},
-      {:htmd, "~> 0.2", optional: true},
-      {:mnesia_rocksdb,
-       github: "aeternity/mnesia_rocksdb", branch: "master", manager: :rebar3, runtime: false}
+      {:dlex, github: "Enma-Studios/dlex", branch: "master", optional: false},
+      {:htmd, "~> 0.2", optional: false}
     ]
 
     ml_deps =

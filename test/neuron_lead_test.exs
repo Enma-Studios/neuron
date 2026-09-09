@@ -48,14 +48,6 @@ defmodule Neuron.IntelligenceTest do
          }}
   end
 
-  setup_all do
-    unless Process.whereis(Neuron.RunSupervisor) do
-      {:ok, _} = Neuron.Application.start(:normal, [])
-    end
-
-    :ok
-  end
-
   test "explores, embeds, scores, and returns a snapshot" do
     fit = %{
       requirements: [%{category: "industry", description: "fintech payments"}],

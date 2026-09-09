@@ -1,152 +1,88 @@
 defmodule Neuron do
-  @moduledoc "Public API for durable Neuron runs."
+  @moduledoc "Embeddable API for durable, Oban-executed agents."
+  alias Neuron.{FSM, Persistence}
 
   def start_run(profile \\ Neuron.Coordinator.default(), input, opts \\ []) do
-    id = Keyword.get(opts, :id, random_id())
-    profile = normalize_profile(profile)
-
-    case Neuron.RunSupervisor.start_run(id, profile, input, opts) do
-      {:ok, _pid} -> {:ok, id}
-      {:error, {:already_started, _pid}} -> {:error, :already_exists}
-      other -> other
-    end
+    with {:ok, machine} <-
+           FSM.create(
+             Neuron.Run,
+             %{profile: profile, input: input, opts: opts, result: nil, error: nil},
+             id: Keyword.get(opts, :id, Ecto.UUID.generate()),
+             worker: Neuron.RunWorker
+           ),
+         do: {:ok, machine.id}
   end
 
-  @doc "Start a coordinator and wait for its terminal result, including lead data."
   def run(profile \\ Neuron.Coordinator.default(), input, opts \\ []) do
     with {:ok, id} <- start_run(profile, input, opts),
-         {:ok, response} <- await_run(id, Keyword.get(opts, :timeout, 120_000)) do
-      {:ok, Map.put(response, :id, id)}
+         do: await_run(id, Keyword.get(opts, :timeout, 120_000))
+  end
+
+  def get_run(id) do
+    machine = FSM.get(id)
+    data = FSM.data(machine)
+
+    snapshot =
+      Map.merge(data, %{
+        id: id,
+        status: String.to_existing_atom(machine.state),
+        version: machine.version
+      })
+
+    if is_map(data[:result]) do
+      Enum.reduce(
+        [:leads, :people, :posts, :organization, :campaign, :target_profile],
+        snapshot,
+        fn key, acc ->
+          value = Map.get(data.result, key, Map.get(data.result, to_string(key)))
+          if is_nil(value), do: acc, else: Map.put(acc, key, value)
+        end
+      )
+    else
+      snapshot
     end
   end
 
-  @doc "Wait for a durable run and return its result instead of only its process id."
-  def await_run(id, timeout \\ 120_000) when is_binary(id) and is_integer(timeout) do
-    deadline = System.monotonic_time(:millisecond) + timeout
-    await_loop(id, deadline)
+  def list_runs, do: Persistence.repo().all(FSM.Machine) |> Enum.map(&get_run(&1.id))
+  def events(id), do: Neuron.Storage.events(id)
+  def cancel_run(id), do: FSM.send(id, :cancel)
+
+  def provide_run(id, input) do
+    data = id |> FSM.get() |> FSM.data()
+    FSM.send(id, :provided, %{input: Map.merge(data.input, input), result: nil})
   end
 
-  def get_run(id), do: Neuron.Run.call(id, :get)
+  def resume_run(id), do: FSM.send(id, :retry)
 
-  def list_runs do
-    case Neuron.Storage.list_runs() do
-      {:atomic, runs} ->
-        Enum.map(runs, fn {:neuron_run, id, profile, _input, status, inserted, updated, result,
-                           error} ->
-          %{
-            id: id,
-            profile: profile,
-            status: status,
-            inserted_at: inserted,
-            updated_at: updated,
-            result: result,
-            error: error
-          }
-        end)
-
-      error ->
-        error
-    end
+  def spawn_agent(run_id, role, worker \\ Neuron.Agent.Echo, input, opts \\ []) do
+    start_run(Neuron.Agent, %{worker: worker, input: input, parent_id: run_id, role: role}, opts)
   end
 
-  def events(id) do
-    case Neuron.Storage.events(id) do
-      {:atomic, events} -> events
-      error -> error
-    end
-  end
+  def get_agent(id), do: get_run(id)
+  def cancel_agent(id), do: cancel_run(id)
 
-  def cancel_run(id), do: Neuron.Run.call(id, :cancel)
-  def provide_run(id, input) when is_map(input), do: Neuron.Run.call(id, {:provide, input})
+  def await_run(id, timeout \\ 120_000),
+    do: await(id, System.monotonic_time(:millisecond) + timeout)
 
-  defp await_loop(id, deadline) do
-    response = persisted_or_live_run(id)
+  defp await(id, deadline) do
+    result = get_run(id)
 
     cond do
-      is_map(response) and response.status == :complete ->
-        {:ok, response}
+      result.status == :complete ->
+        {:ok, result}
 
-      is_map(response) and response.status == :needs_input ->
-        {:needs_input, response}
+      result.status == :needs_input ->
+        {:needs_input, result}
 
-      is_map(response) and response.status in [:failed, :cancelled] ->
-        {:error, response}
+      result.status in [:failed, :cancelled] ->
+        {:error, result}
 
       System.monotonic_time(:millisecond) >= deadline ->
         {:error, :timeout}
 
       true ->
         Process.sleep(25)
-        await_loop(id, deadline)
+        await(id, deadline)
     end
   end
-
-  defp persisted_or_live_run(id) do
-    live =
-      try do
-        get_run(id)
-      catch
-        :exit, _ -> nil
-      end
-
-    live ||
-      case Neuron.Storage.get_run(id) do
-        {:ok, {:neuron_run, ^id, profile, input, status, inserted, updated, result, error}} ->
-          %{
-            id: id,
-            profile: profile,
-            input: input,
-            status: status,
-            inserted_at: inserted,
-            updated_at: updated,
-            result: result,
-            error: error
-          }
-
-        _ ->
-          nil
-      end
-  end
-
-  def spawn_agent(run_id, role, worker \\ Neuron.Agent.Echo, input, opts \\ []) do
-    id = Keyword.get(opts, :id, random_id())
-    parent_id = Keyword.get(opts, :parent_id)
-
-    case Neuron.AgentSupervisor.start_agent(id, run_id, parent_id, role, worker, input, opts) do
-      {:ok, _pid} -> {:ok, id}
-      error -> error
-    end
-  end
-
-  def get_agent(id), do: Neuron.Agent.call(id, :get)
-  def cancel_agent(id), do: Neuron.Agent.call(id, :cancel)
-
-  def resume_run(id) do
-    case Neuron.Storage.get_run(id) do
-      {:ok, {:neuron_run, ^id, profile, input, status, _inserted, _updated, result, error}}
-      when status in [:queued, :planning, :executing] ->
-        case Neuron.RunSupervisor.start_run(id, profile, input,
-               resumed: true,
-               result: result,
-               error: error
-             ) do
-          {:ok, _pid} -> :ok
-          {:error, {:already_started, _}} -> {:error, :already_running}
-          error -> error
-        end
-
-      {:ok, {:neuron_run, ^id, _profile, _input, status, _, _, _, _}} ->
-        {:error, {:not_resumable, status}}
-
-      :not_found ->
-        {:error, :not_found}
-
-      error ->
-        error
-    end
-  end
-
-  defp normalize_profile(profile) when is_atom(profile), do: profile
-  defp normalize_profile(profile) when is_map(profile), do: Map.fetch!(profile, :module)
-  defp random_id, do: :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
 end

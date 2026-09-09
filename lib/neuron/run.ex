@@ -1,198 +1,136 @@
 defmodule Neuron.Run do
-  @moduledoc "A durable coordinator state machine."
+  @moduledoc "Durable planning, execution, approval, cancellation, and completion states."
+  use Neuron.FSM
+  state(:planning)
+  state(:executing)
+  state(:processing)
+  state(:needs_input)
+  state(:complete)
+  state(:failed)
+  state(:cancelled)
+  transition(:pipeline, from: :planning, to: :processing, worker: Neuron.StageWorker)
+  transition(:progress, from: :processing, to: :processing, worker: Neuron.StageWorker)
+  transition(:finished, from: :processing, to: :complete)
+  transition(:failed, from: :processing, to: :failed)
+  transition(:cancel, from: :processing, to: :cancelled)
+  transition(:planned, from: :planning, to: :executing, worker: Neuron.RunWorker)
+  transition(:needs_input, from: :planning, to: :needs_input)
+  transition(:provided, from: :needs_input, to: :planning, worker: Neuron.RunWorker)
+  transition(:finished, from: :executing, to: :complete)
+  transition(:failed, from: :planning, to: :failed)
+  transition(:failed, from: :executing, to: :failed)
+  transition(:retry, from: :failed, to: :planning, worker: Neuron.RunWorker)
+  transition(:cancel, from: :planning, to: :cancelled)
+  transition(:cancel, from: :executing, to: :cancelled)
+  transition(:cancel, from: :needs_input, to: :cancelled)
+end
 
-  @behaviour :gen_statem
+defmodule Neuron.RunWorker do
+  use Oban.Worker, queue: :orchestrators, max_attempts: 5
 
-  defstruct [:id, :profile, :input, :plan, :result, :error, :opts]
+  def perform(%Oban.Job{args: %{"machine_id" => id, "version" => version}} = job) do
+    machine = Neuron.FSM.get(id)
 
-  def start_link({id, profile, input, opts}) do
-    :gen_statem.start_link(
-      {:via, Registry, {Neuron.RunRegistry, id}},
-      __MODULE__,
-      {id, profile, input, opts},
-      []
-    )
-  end
+    if machine.version == version do
+      data = Neuron.FSM.data(machine)
+      context = %{run_id: id, options: data.opts, plan: data[:plan]}
 
-  def child_spec({id, profile, input, opts}) do
-    %{
-      id: {__MODULE__, id},
-      start: {__MODULE__, :start_link, [{id, profile, input, opts}]},
-      type: :worker
-    }
-  end
+      result =
+        case machine.state do
+          "planning" -> data.profile.plan(data.input, context)
+          "executing" -> data.profile.run(data.plan, context)
+        end
 
-  def call(id, request), do: :gen_statem.call(Neuron.RunRegistry.via(id), request)
+      case result do
+        {:ok, value} when machine.state == "planning" ->
+          if function_exported?(data.profile, :stages, 0) do
+            advance(id, version, :pipeline, %{plan: value, stage_index: 0, stage_data: value})
+          else
+            advance(id, version, :planned, %{plan: value})
+          end
 
-  @impl true
-  def callback_mode, do: :state_functions
+        {:ok, value} ->
+          advance(id, version, :finished, %{result: value, error: nil})
 
-  @impl true
-  def init({id, profile, input, opts}) do
-    now = DateTime.utc_now()
-    run = {:neuron_run, id, profile, input, :queued, now, now, nil, nil}
-    :ok = Neuron.Storage.put_run(run, %{run_id: id, task_id: "coordinator:init"})
-    _ = Neuron.Storage.next_event(id, :run_created, %{profile: profile})
+        {:needs_input, details} ->
+          advance(id, version, :needs_input, %{result: details})
 
-    {:ok, :queued, %__MODULE__{id: id, profile: profile, input: input, opts: opts},
-     [{:next_event, :internal, :plan}]}
-  end
+        {:approval_required, details} ->
+          advance(id, version, :needs_input, %{result: details})
 
-  def queued(:internal, :plan, data) do
-    persist_status(data, :planning)
-    {:next_state, :planning, data, [{:next_event, :internal, :run_plan}]}
-  end
+        {:error, reason} when job.attempt < job.max_attempts ->
+          {:error, reason}
 
-  def queued({:call, from}, :get, data),
-    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :queued)}]}
-
-  def queued({:call, from}, :cancel, data), do: cancel(from, data)
-
-  def planning(:internal, :run_plan, data) do
-    case data.profile.plan(data.input, context(data)) do
-      {:ok, plan} ->
-        data = %{data | plan: plan}
-        persist_status(data, :executing)
-        {:next_state, :executing, data, [{:next_event, :internal, :execute}]}
-
-      {:needs_input, details} ->
-        data = %{data | result: details}
-        persist_status(data, :needs_input, details, nil)
-        {:next_state, :needs_input, data}
-
-      {:error, reason} ->
-        fail(data, reason)
-    end
-  end
-
-  def planning({:call, from}, :get, data),
-    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :planning)}]}
-
-  def planning({:call, from}, :cancel, data), do: cancel(from, data)
-
-  def needs_input({:call, from}, :get, data),
-    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :needs_input)}]}
-
-  def needs_input({:call, from}, {:provide, input}, data) when is_map(input) do
-    data = %{data | input: Map.merge(data.input || %{}, input), result: nil, error: nil}
-    persist_status(data, :planning)
-    {:next_state, :planning, data, [{:next_event, :internal, :run_plan}, {:reply, from, :ok}]}
-  end
-
-  def needs_input({:call, from}, :cancel, data), do: cancel(from, data)
-
-  def executing(:internal, :execute, data) do
-    operation = operation_id(data)
-
-    _ =
-      Neuron.Storage.put_operation(
-        {:neuron_operation, operation, data.id, data.id, :coordinator, 1, :started, data.plan,
-         nil, DateTime.utc_now()},
-        %{run_id: data.id, agent_id: data.id, task_id: "coordinator:operation"}
-      )
-
-    case data.profile.run(data.plan, context(data)) do
-      {:ok, result} ->
-        _ =
-          Neuron.Storage.put_operation(
-            {:neuron_operation, operation, data.id, data.id, :coordinator, 1, :completed,
-             data.plan, result, DateTime.utc_now()},
-            %{run_id: data.id, agent_id: data.id, task_id: "coordinator:operation"}
-          )
-
-        complete(%{data | result: result})
-
-      {:error, reason} ->
-        fail(data, reason)
-    end
-  end
-
-  def executing({:call, from}, :get, data),
-    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :executing)}]}
-
-  def executing({:call, from}, :cancel, data), do: cancel(from, data)
-
-  def complete({:call, from}, :get, data),
-    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :complete)}]}
-
-  def complete({:call, from}, :cancel, _data),
-    do: {:keep_state_and_data, [{:reply, from, {:error, :already_complete}}]}
-
-  def complete(_event_type, _event, data), do: {:keep_state, data}
-
-  def failed({:call, from}, :get, data),
-    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :failed)}]}
-
-  def failed({:call, from}, :cancel, _data),
-    do: {:keep_state_and_data, [{:reply, from, {:error, :already_failed}}]}
-
-  def failed(_event_type, _event, data), do: {:keep_state, data}
-
-  defp context(data), do: %{run_id: data.id, options: data.opts, plan: data.plan}
-
-  defp complete(data) do
-    persist_status(data, :complete, data.result, nil)
-    _ = Neuron.Storage.next_event(data.id, :run_completed, %{result: data.result})
-    {:next_state, :complete, data}
-  end
-
-  defp fail(data, reason) do
-    data = %{data | error: reason}
-    persist_status(data, :failed, nil, reason)
-    _ = Neuron.Storage.next_event(data.id, :run_failed, %{error: inspect(reason)})
-    {:next_state, :failed, data}
-  end
-
-  defp cancel(from, data) do
-    persist_status(data, :cancelled, nil, :cancelled)
-    _ = Neuron.Storage.next_event(data.id, :run_cancelled, %{})
-    {:stop_and_reply, :normal, [{:reply, from, :ok}], data}
-  end
-
-  defp persist_status(data, status, result \\ nil, error \\ nil) do
-    Neuron.Telemetry.emit([:run, :state], %{
-      run_id: data.id,
-      task_id: "coordinator",
-      status: status,
-      result: Neuron.Telemetry.summarize(result),
-      error: inspect(error)
-    })
-
-    now = DateTime.utc_now()
-
-    _ =
-      Neuron.Storage.put_run(
-        {:neuron_run, data.id, data.profile, data.input, status, now, now, result, error},
-        %{run_id: data.id, task_id: "coordinator:state"}
-      )
-
-    _ = Neuron.Storage.next_event(data.id, :status_changed, %{status: status})
-    :ok
-  end
-
-  defp operation_id(data), do: "#{data.id}:coordinator:1"
-
-  defp snapshot(data, status),
-    do:
-      %{
-        id: data.id,
-        status: status,
-        profile: data.profile,
-        result: data.result,
-        error: data.error
-      }
-      |> expose_result_fields(data.result)
-
-  defp expose_result_fields(snapshot, result) when is_map(result) do
-    Enum.reduce(
-      [:leads, :campaign, :target_profile, :organization, :people, :posts],
-      snapshot,
-      fn key, acc ->
-        value = Map.get(result, key, Map.get(result, Atom.to_string(key)))
-        if is_nil(value), do: acc, else: Map.put(acc, key, value)
+        {:error, reason} ->
+          advance(id, version, :failed, %{error: reason})
       end
-    )
+    else
+      :ok
+    end
+  rescue
+    error ->
+      if job.attempt == job.max_attempts do
+        advance(id, version, :failed, %{error: Exception.format(:error, error, __STACKTRACE__)})
+      end
+
+      reraise error, __STACKTRACE__
   end
 
-  defp expose_result_fields(snapshot, _result), do: snapshot
+  def advance(id, version, event, payload) do
+    case Neuron.FSM.send(id, event, payload, version: version) do
+      {:ok, _} -> :ok
+      {:error, :stale} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+end
+
+defmodule Neuron.StageWorker do
+  @moduledoc "Executes one checkpointed pipeline stage per Oban job."
+  use Oban.Worker, queue: :agents, max_attempts: 5
+
+  def perform(%Oban.Job{args: %{"machine_id" => id, "version" => version}} = job) do
+    machine = Neuron.FSM.get(id)
+
+    if machine.version != version do
+      :ok
+    else
+      data = Neuron.FSM.data(machine)
+      stages = data.profile.stages()
+      stage = Enum.fetch!(stages, data.stage_index)
+      opts = Keyword.put(data.opts, :run_id, id)
+
+      result =
+        Neuron.Telemetry.span([:pipeline, :stage], %{run_id: id, stage: stage}, fn ->
+          data.profile.stage(stage, data.stage_data, opts)
+        end)
+
+      case result do
+        {:ok, output} ->
+          if data.stage_index + 1 == length(stages) do
+            Neuron.RunWorker.advance(id, version, :finished, %{result: output, stage_data: nil})
+          else
+            Neuron.RunWorker.advance(id, version, :progress, %{
+              stage_data: output,
+              stage_index: data.stage_index + 1
+            })
+          end
+
+        {:error, reason} when job.attempt < job.max_attempts ->
+          {:error, reason}
+
+        {:error, reason} ->
+          Neuron.RunWorker.advance(id, version, :failed, %{error: reason})
+      end
+    end
+  rescue
+    error ->
+      if job.attempt == job.max_attempts do
+        Neuron.RunWorker.advance(id, version, :failed, %{
+          error: Exception.format(:error, error, __STACKTRACE__)
+        })
+      end
+
+      reraise error, __STACKTRACE__
+  end
 end

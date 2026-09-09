@@ -1,19 +1,28 @@
 defmodule Neuron.Application do
-  @moduledoc "OTP entrypoint for durable agent runs and the shared domain graph."
-
+  @moduledoc "Standalone or host-managed repository, Oban, and pipeline supervision."
   use Application
 
-  @impl true
   def start(_type, _args) do
-    children = [
-      {Neuron.Storage, []},
-      {Neuron.Dgraph, []},
-      {Neuron.RunRegistry, []},
-      {Neuron.RunSupervisor, []},
-      {Neuron.AgentSupervisor, []},
-      {Neuron.Recovery, []}
-    ]
+    repo = Neuron.Persistence.repo()
+    repo_children = if Application.fetch_env!(:neuron, :start_repo), do: [repo], else: []
 
-    Supervisor.start_link(children, strategy: :one_for_one, name: Neuron.Supervisor)
+    oban_children =
+      if Application.fetch_env!(:neuron, :start_oban) do
+        opts =
+          Application.fetch_env!(:neuron, :oban)
+          |> Keyword.merge(repo: repo, name: Neuron.Persistence.oban())
+
+        [{Oban, opts}]
+      else
+        []
+      end
+
+    Supervisor.start_link(
+      repo_children ++
+        oban_children ++
+        [
+          {Neuron.Dgraph, []},
+          {DynamicSupervisor, name: Neuron.PipelineSupervisor, strategy: :one_for_one}
+        ], strategy: :one_for_one, name: Neuron.Supervisor)
   end
 end
