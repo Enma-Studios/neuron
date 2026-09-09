@@ -16,12 +16,17 @@ defmodule Neuron.CampaignTest do
                field: "B2B security",
                offer: "security assessments",
                target_roles: ["CTO"],
+               target_organizations: ["SaaS companies"],
                geography: ["US"],
                lead_count: 2
              })
 
     assert campaign.domain == "acme.example"
     assert campaign.lead_count == 2
+    assert campaign.seller_profile.domain == "acme.example"
+    assert campaign.target_profile.markets == ["SaaS companies"]
+    assert campaign.seller_profile.geography == []
+    assert {:ok, _} = Ecto.UUID.cast(campaign.campaign_id)
     assert campaign.fit_profile.preferred_geographies == ["US"]
 
     assert %{category: "field", description: "B2B security"} in campaign.fit_profile.requirements
@@ -32,11 +37,32 @@ defmodule Neuron.CampaignTest do
     assert {:ok, campaign} =
              Neuron.Campaign.intake(%{
                domain: "acme.example",
+               offer: "Security assessments",
                fit_profile: %{requirements: [%{description: "security"}]},
                lead_count: 1
              })
 
     assert campaign.domain == "acme.example"
+  end
+
+  test "approval retains extracted seller facts while selecting a proposed campaign" do
+    approval = %{
+      campaigns: [
+        %{
+          offer: "Offensive security assessments",
+          target_roles: ["CISO"],
+          target_organizations: ["Fintech"],
+          geography: ["UK"],
+          lead_count: 1
+        }
+      ],
+      partial: %{organization: "Acme", domain: "acme.example", field: "Security"}
+    }
+
+    assert {:ok, [campaign]} = Neuron.Campaign.approve(approval, 0)
+    assert campaign.seller_profile.domain == "acme.example"
+    assert campaign.seller_profile.offer == "Offensive security assessments"
+    assert campaign.target_profile.roles == ["CISO"]
   end
 
   test "validates the public campaign result and rejects malformed leads" do

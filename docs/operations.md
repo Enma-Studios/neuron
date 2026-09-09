@@ -12,7 +12,7 @@ Each built-in worker permits five attempts. Transient returned errors are Oban f
 
 Lifeline rescues orphaned executing jobs after the configured interval. Because it uses elapsed time, configure `rescue_after` above valid job duration. A killed final attempt may become a discarded Oban job without running Neuron's error handler. `get_run/1`, `resume_run/1`, and `reconcile_run/1` detect a discarded or externally cancelled current-version worker and atomically mark its run failed. Keep Oban's job retention longer than the interval at which you inspect/reconcile such runs.
 
-Cancellation advances the machine version. Pending jobs become stale; an in-flight browser or HTTP call may finish but cannot commit a new state. Child runs remain independent and can be cancelled separately. A waiting API timeout also leaves the durable run active.
+Cancellation advances the machine version. Pending jobs become stale; an in-flight browser or HTTP call may finish but cannot commit a new state. Cancelling a campaign also cancels its known ingestion children; independently delegated agents still require their own cancellation. A waiting API timeout also leaves the durable run active.
 
 Dgraph stage writes resolve deterministic external IDs in one upsert. Replaying a write should update those nodes, not allocate a new copy. Old facts absent from a new extraction are not automatically deleted. SQL event/checkpoint transactions and remote Dgraph/HTTP calls cannot be one distributed transaction.
 
@@ -55,7 +55,7 @@ Campaign runs and their research attempts each use an independently generated UU
 
 `mix test` uses real SQLite and Oban with manual queue draining and explicit external-service fixtures. It tests FSM transitions, stale jobs, cancellation, output retention, stage checkpoints, rollback, failed-stage resumption, GenStage cleanup, schema validation, and domain rules. Tests migrate first through the Mix alias.
 
-`NEURON_DGRAPH_ENABLED=true mix test --include integration test/neuron_dgraph_integration_test.exs` requires the configured gRPC service and verifies repeat writes/querying. `scripts/dgraph_integration.sh` starts a temporary Podman instance; choose distinct host ports when your local Dgraph is already running:
+`NEURON_DGRAPH_ENABLED=true mix test --include integration test/neuron_dgraph_integration_test.exs test/neuron_campaign_pipeline_integration_test.exs` requires the configured gRPC service and verifies repeat writes, queries, and campaign delivery. `scripts/dgraph_integration.sh` starts a temporary Podman instance on ports 18080/19080 by default:
 
 ```sh
 NEURON_DGRAPH_HTTP_PORT=18080 NEURON_DGRAPH_GRPC_PORT=19080 bash scripts/dgraph_integration.sh

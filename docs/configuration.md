@@ -64,7 +64,7 @@ Local browsing uses Pinocchio's configured executable/session pool. Browser Use 
 
 ## Per-run options
 
-Common options are `id:`, `trace_id:`, and `timeout:`. The timeout for `await_run` only bounds waiting. Research additionally accepts `queries:`, `max_sources:` (8), `search_concurrency:` (2), `browser_concurrency:` (3), `re_enrich:` (true), `assertions:`, and `persist:` (true). Campaign collection accepts `max_attempts:` (3).
+Common options are `id:`, `trace_id:`, and `timeout:`. The timeout for `await_run` only bounds waiting. Research additionally accepts `queries:`, `max_sources:` (8), `search_concurrency:` (2), `browser_concurrency:` (3), `re_enrich:` (true), `assertions:`, and `persist:` (true). Campaign discovery accepts the bounded search-budget options documented below.
 
 `persist: false` is an explicit no-graph-write operation; it does not claim successful ingestion. Fixtures may supply browser `adapter:` and `model_provider:` modules. Durable inputs and options may contain module atoms but cannot contain functions, processes, ports, or references. Avoid placing API keys in durable per-run options; configure secrets at application level.
 
@@ -81,3 +81,5 @@ Do not mix embedding models or dimensions in an existing graph index: re-ingest/
 Campaign run options: `max_rounds: 3`, `max_queries: 12`, `max_pages: 32`, `batch_size: 8`, `budget_seconds: 1800`, and `search_concurrency: 2`. The time budget stops new scheduling; in-flight batches finish. The requested lead count is a target, not a truncation limit.
 
 Selection options: `selection_threshold: 0.5` and `weights` (market 0.35, role 0.20, geography 0.15, evidence 0.15, freshness 0.15). Market relevance combines lexical fit and embedding similarity equally. Freshness decays with a 90-day half-life. Contact evidence and explicit exclusions are hard eligibility checks, independent of score.
+
+Contact preference is separate from fit scoring: eligible company-email leads rank before social-only leads. `:neuron, :selection` accepts `channel_order` (default `["email", "linkedin", "x", "social"]`). Email remains the primary channel. Every returned lead has its preferred-channel draft and all verified channel options.

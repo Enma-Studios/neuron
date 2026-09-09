@@ -26,7 +26,7 @@ defmodule MyProfile do
 end
 ```
 
-For a durable multistep pipeline, also export `stages/0` (ordered atom names) and `stage/3`. Each stage receives its predecessor's saved data and run options and returns `{:ok, next_data}` or `{:error, reason}`. The final stage's value becomes `result`. `Neuron.Coordinator.LeadGeneration` demonstrates the production contract. Stage code must tolerate replay; a checkpoint cannot atomically commit a remote HTTP request.
+For a durable multistep pipeline, also export `stages/0` (ordered atom names) and `stage/3`. Each stage receives its predecessor's saved data and run options and returns `{:ok, next_data}` or `{:error, reason}`. A stage may return `{:goto, stage_name, data}` to checkpoint a loop or `{:wait, seconds}` to release its worker until children finish. The final stage's value becomes `result`. `Neuron.Coordinator.LeadGeneration` demonstrates the production contract. Stage code must tolerate replay; a checkpoint cannot atomically commit a remote HTTP request.
 
 Delegated workers implement `Neuron.Agent.Worker.run(input, context)`. They are ordinary separately queued jobs. Parent cancellation does not recursively cancel independent child runs.
 
@@ -59,7 +59,15 @@ Invalid events return `{:error, {:invalid_event, state, event}}`; stale versions
 
 After explicit proposal approval, start `Neuron.Coordinator.Campaign` with `%{approved_campaign: campaign}` to validate the approved brief without inferring new proposals. Callers are responsible for presenting proposals and obtaining that approval.
 
-`Neuron.Campaign.run/2` counts unique contacts outside the model, retains failures, and stops when the target is met or its attempt budget is exhausted. Every campaign run and research attempt receives its own UUID; attempts are correlated with the campaign through `parent_run_id`. `Neuron.Research.run(domain, fit_profile, opts)` starts/awaits a durable six-stage research run. An explicit `run_id:` identifies an existing attempt on replay. Research produces organization, people, posts, leads, drafts, target profile, and source URLs; `Neuron.Schemas` validates shapes with embedded Ecto schemas and changesets.
+`Neuron.Campaign.run/2` starts and awaits the durable campaign pipeline and returns the standard run snapshot. The normalized brief separates `seller_profile` (our domain, offering, field, geography) from `target_profile` (prospective markets, roles, geography, exclusions). Keep its `campaign_id` when requesting new executions of the same campaign. Each execution and ingestion child has its own UUID.
+
+Campaigns search for external prospects, ingest documents into the shared graph, and retrieve/rank graph candidates. Sourced, person-specific company emails rank first; verified LinkedIn, X and other professional social channels also qualify. GitHub is excluded from prospect discovery and outreach. Repeats are suppressed within the same campaign; other campaigns can use the same global facts. Reservations become delivered atomically with the completed SQL run; cancellation releases pending reservations and cancels known ingestion children. Failed executions retain reservations for resumption; cancel one to release them.
+
+`run.result.status` is `:target_met`, `:partial`, or `:no_qualified_leads`. Results include `campaign_id`, `campaign_run_id`, `target_count`, `returned_count`, `leads`, `summary`, `stop_reason`, and `failures`. Each lead includes graph identities, available contact channels, preferred channel, optional company email, score breakdown, semantic similarity, evidence, cited reason, and a channel-specific outreach draft. Zero leads is an unsuccessful research outcome even though the orchestration job completed normally. Reaching the target stops new scheduling; the final batch can return extra qualifying leads.
+
+`Neuron.Research.run(domain, fit_profile, opts)` retains the standalone account-research API; it is separate from campaign prospect discovery. `Neuron.Ingestion.submit/2` accepts a URL or Markdown document and returns a durable run UUID. See [ingestion](ingestion.md) for its contracts.
+
+Explicit assertions use `assertions: [%{entity_type: "Organization", identity: "example.org", predicate: "industry", value: "Software"}]`. They outrank scraped claims but do not substitute for sourced contact verification. `Neuron.Knowledge.assert_fact/2` supports independent assertions.
 
 `Neuron.Intelligence.explore/3` is a lower-level browser/snapshot/embedding/scoring API. `explore_many/3` and `discover/3` operate over multiple sources. Use the coordinator profile to run this work durably.
 
@@ -67,6 +75,12 @@ After explicit proposal approval, start `Neuron.Coordinator.Campaign` with `%{ap
 
 `Neuron.Graph.upsert/2` writes domain facts with stable external identities; `query/3` accepts DQL and variables. `Neuron.Graph.Schema.definition/0` exposes the complete domain schema. Dgraph owns full-text/vector querying and relationship traversal.
 
-`Neuron.Browser.fetch/2`, `Neuron.Search.web/2`, `Neuron.Snapshot.from_html/2`, `Neuron.Embedding`, and `Neuron.Model` define the source/model boundaries. `Neuron.Prompt.render/3` and `render_file/3` render EEx with `@assign` values and persist raw rendered prompts for correlated runs. Prompt files ship in the application's `priv` directory.
+`Neuron.Browser.fetch/2`, `Neuron.Search.web/2`, `Neuron.Snapshot.from_html/2`, `Neuron.Embedding`, and `Neuron.Model` define the source/model boundaries. `Neuron.Prompt.render/3` and `render_file/3` render EEx with `@assign` values and emit rendered prompts through correlated telemetry. Prompt files ship in the application's `priv` directory.
 
 `Neuron.ContactPolicy` supplies evidence/contact rules and advisory source preferences. `Neuron.Lead.evaluate/3` returns explicit selection reasons and criterion evidence. These rules are configurable application logic, not proof that every extracted assertion is true.
+
+## Outreach channels
+
+Lead `contact_channels` are ordered company email, LinkedIn, X, then other professional socials. `preferred_channel` selects the draft format. `outreach` contains `channel`, verified `recipient`, optional `subject`, and `body`. Email retains the convenience fields `email_subject` and `email_body`; these are null for social drafts. Missing email addresses are never guessed. GitHub is excluded.
+
+Email uses a concise professional message; LinkedIn uses a connection note (300 characters), X a private-message draft (500 characters), and other socials a private introduction (600 characters). Subject lines are only valid for email. The model is asked to repair invalid channel/length output. Drafts never send or assume messaging permissions.

@@ -45,12 +45,22 @@ defmodule Neuron.Schemas.Lead do
   @primary_key false
   embedded_schema do
     field(:person_name, :string)
+    field(:person_id, :string)
+    field(:person_uid, :string)
+    field(:organization, :string)
+    field(:score_breakdown, :map, default: %{})
+    field(:semantic_similarity, :float)
+    field(:contact_channels, {:array, :map}, default: [])
+    field(:preferred_channel, :string)
+    field(:contact_priority, :float)
+    field(:evidence, {:array, :map}, default: [])
     field(:title, :string)
     field(:email, :string)
     field(:fit_score, :float)
     field(:reason, :string)
     field(:email_subject, :string)
     field(:email_body, :string)
+    embeds_one(:outreach, Neuron.Outreach)
     field(:evidence_urls, {:array, :string}, default: [])
   end
 
@@ -59,6 +69,15 @@ defmodule Neuron.Schemas.Lead do
       data
       |> cast(attrs, [
         :person_name,
+        :person_id,
+        :person_uid,
+        :organization,
+        :score_breakdown,
+        :semantic_similarity,
+        :contact_channels,
+        :preferred_channel,
+        :contact_priority,
+        :evidence,
         :title,
         :email,
         :fit_score,
@@ -67,6 +86,7 @@ defmodule Neuron.Schemas.Lead do
         :email_body,
         :evidence_urls
       ])
+      |> cast_embed(:outreach, with: &Neuron.Outreach.changeset/2)
       |> validate_required([:person_name, :reason])
       |> validate_number(:fit_score, greater_than_or_equal_to: 0.0, less_than_or_equal_to: 1.0)
       |> validate_change(:evidence_urls, fn :evidence_urls, urls ->
@@ -82,6 +102,10 @@ defmodule Neuron.Schemas.CampaignResult do
   embedded_schema do
     field(:status, :string)
     field(:campaign_run_id, Ecto.UUID)
+    field(:campaign_id, Ecto.UUID)
+    field(:returned_count, :integer)
+    field(:summary, :string)
+    field(:stop_reason, :string)
     field(:target_count, :integer)
     field(:campaign, :map, default: %{})
     field(:failures, {:array, :map}, default: [])
@@ -94,14 +118,58 @@ defmodule Neuron.Schemas.CampaignResult do
       |> cast(attrs, [
         :status,
         :campaign_run_id,
+        :campaign_id,
+        :returned_count,
+        :summary,
+        :stop_reason,
         :target_count,
         :campaign,
         :failures
       ])
       |> cast_embed(:leads, with: &Neuron.Schemas.Lead.changeset/2)
       |> validate_required([:status, :campaign_run_id, :target_count])
-      |> validate_inclusion(:status, ["target_met", "failed"])
+      |> validate_inclusion(:status, ["target_met", "partial", "no_qualified_leads", "failed"])
       |> validate_number(:target_count, greater_than_or_equal_to: 1)
+      |> validate_campaign_leads()
+
+  defp validate_campaign_leads(changeset) do
+    if get_field(changeset, :campaign_id) do
+      leads = get_field(changeset, :leads, [])
+      changeset = validate_required(changeset, [:returned_count, :summary, :stop_reason])
+
+      valid =
+        Enum.all?(leads, fn lead ->
+          is_binary(lead.person_id) and is_binary(lead.person_uid) and
+            is_binary(lead.organization) and lead.contact_channels != [] and
+            (is_nil(lead.email) or Neuron.Selection.company_email?(lead.email, lead.organization)) and
+            lead.evidence_urls != [] and lead.evidence != [] and
+            not is_nil(lead.outreach) and lead.outreach.channel == lead.preferred_channel
+        end)
+
+      cond do
+        not valid ->
+          add_error(
+            changeset,
+            :leads,
+            "requires sourced company contacts, evidence and outreach drafts"
+          )
+
+        get_field(changeset, :returned_count) != length(leads) ->
+          add_error(changeset, :returned_count, "must match leads")
+
+        get_field(changeset, :status) == "no_qualified_leads" and leads != [] ->
+          add_error(changeset, :status, "requires zero leads")
+
+        get_field(changeset, :status) in ["target_met", "partial"] and leads == [] ->
+          add_error(changeset, :leads, "requires at least one lead")
+
+        true ->
+          changeset
+      end
+    else
+      changeset
+    end
+  end
 end
 
 defmodule Neuron.Schemas.Research do
@@ -185,6 +253,13 @@ defmodule Neuron.Schemas do
       if Map.has_key?(attrs, "status"),
         do: Map.put(attrs, "status", to_string(status)),
         else: Map.put(attrs, :status, to_string(status))
+
+    attrs =
+      cond do
+        Map.has_key?(attrs, :stop_reason) -> Map.update!(attrs, :stop_reason, &to_string/1)
+        Map.has_key?(attrs, "stop_reason") -> Map.update!(attrs, "stop_reason", &to_string/1)
+        true -> attrs
+      end
 
     changeset = Neuron.Schemas.CampaignResult.changeset(%Neuron.Schemas.CampaignResult{}, attrs)
 

@@ -83,7 +83,25 @@ defmodule Neuron do
 
   def list_runs, do: Persistence.repo().all(FSM.Machine) |> Enum.map(&get_run(&1.id))
   def events(id), do: Neuron.Storage.events(id)
-  def cancel_run(id), do: FSM.send(id, :cancel)
+
+  def cancel_run(id) do
+    with {:ok, machine} <- FSM.send(id, :cancel) do
+      data = FSM.data(machine)
+
+      if data[:profile] == Neuron.Coordinator.Campaign do
+        children = get_in(data, [:stage_data, :children]) || []
+        pending = get_in(data, [:stage_data, :pending_children]) || []
+
+        for child <- Enum.uniq_by(children ++ pending, & &1.id),
+            saved = Persistence.repo().get(FSM.Machine, child.id),
+            saved && saved.state not in ["complete", "failed", "cancelled"] do
+          FSM.send(child.id, :cancel)
+        end
+      end
+
+      {:ok, machine}
+    end
+  end
 
   def provide_run(id, input) do
     data = id |> FSM.get() |> FSM.data()

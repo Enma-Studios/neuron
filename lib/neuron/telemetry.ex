@@ -45,14 +45,32 @@ defmodule Neuron.Telemetry do
 
   def trace_metadata(opts) when is_list(opts) do
     opts
-    |> Keyword.take([:trace_id, :run_id, :agent_id, :task_id, :operation_id, :attempt])
+    |> Keyword.take([
+      :trace_id,
+      :run_id,
+      :parent_run_id,
+      :campaign_id,
+      :agent_id,
+      :task_id,
+      :operation_id,
+      :attempt
+    ])
     |> Map.new()
     |> Map.put_new(:trace_id, trace_id())
   end
 
   def trace_metadata(opts) when is_map(opts) do
     opts
-    |> Map.take([:trace_id, :run_id, :agent_id, :task_id, :operation_id, :attempt])
+    |> Map.take([
+      :trace_id,
+      :run_id,
+      :parent_run_id,
+      :campaign_id,
+      :agent_id,
+      :task_id,
+      :operation_id,
+      :attempt
+    ])
     |> Map.put_new(:trace_id, trace_id())
   end
 

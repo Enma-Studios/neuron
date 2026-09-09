@@ -1,6 +1,6 @@
 # Neuron
 
-[Neuron](https://github.com/Enma-Studios/neuron) is an embeddable Elixir agent library for Neureni. It runs campaign intake, research, evidence extraction, enrichment, contact qualification, and email drafting. It returns leads and their selection reasons; it does not send email.
+[Neuron](https://github.com/Enma-Studios/neuron) is an embeddable Elixir agent library for Neureni. It runs campaign intake, research, evidence extraction, enrichment, contact qualification, and channel-specific outreach drafting. It returns leads and their selection reasons; it does not send messages.
 
 Oban executes a durable state machine on an Ecto repository. Standalone development uses SQLite. A host application can supply its Postgres repository and Oban instance. Neuron has no Phoenix dependency.
 
@@ -13,6 +13,7 @@ Install Elixir 1.20 / compatible Erlang, Git, Chromium, and the native build too
 ```sh
 mix deps.get
 mix compile
+mix neuron.models.fetch
 mix neuron.migrate
 mix neuron.dgraph.migrate
 ```
@@ -115,7 +116,7 @@ See [operations](docs/operations.md) for event names, retry behavior, and shutdo
 ```sh
 mix format --check-formatted
 mix test
-NEURON_DGRAPH_ENABLED=true mix test --include integration test/neuron_dgraph_integration_test.exs
+NEURON_DGRAPH_ENABLED=true mix test --include integration test/neuron_dgraph_integration_test.exs test/neuron_campaign_pipeline_integration_test.exs
 # Or start an isolated Dgraph with Podman:
 bash scripts/dgraph_integration.sh
 bash scripts/postgres_integration.sh

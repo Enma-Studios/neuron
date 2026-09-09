@@ -8,7 +8,7 @@ Run migrations as a deployment step before starting workers. They are never sile
 mix neuron.migrate
 ```
 
-The task starts the configured repo with `Ecto.Migrator.with_repo/2`, then runs pending files in `priv/repo/migrations` using Ecto's migration ledger. The initial migration creates Oban's tables through `Oban.Migration`, plus `neuron_machines`, `neuron_events`, and `neuron_graph_migrations`. Re-running the task skips applied versions.
+The task starts the configured repo with `Ecto.Migrator.with_repo/2`, then runs pending files in `priv/repo/migrations` using Ecto's migration ledger. Migration `20260909000002` adds campaign-scoped SQL selection reservations with a unique campaign/person key. The initial migration creates Oban's tables through `Oban.Migration`, plus `neuron_machines`, `neuron_events`, and `neuron_graph_migrations`. Re-running the task skips applied versions.
 
 Standalone SQLite defaults to `neuron.db`. Tests use `neuron_test.db`; the `test` Mix alias runs SQL migrations before application startup. Production requires `NEURON_DATABASE` when using the supplied runtime configuration.
 
@@ -23,7 +23,7 @@ mix neuron.dgraph.migrate
 mix neuron.dgraph.migrate --endpoint localhost:9080 --transport grpc
 ```
 
-The task requires SQL migrations first. It applies sorted, immutable `.dql` files in `priv/dgraph/migrations`, recording each filename only after Dlex reports successful schema application. The baseline contains the domain schema; the next migration adds the stable external identity index. Applied files are skipped.
+The task requires SQL migrations first. It applies sorted, immutable `.dql` files in `priv/dgraph/migrations`, recording each filename only after Dlex reports successful schema application. The baseline contains the domain schema; version 000005 adds stable external identities and 000006 adds document history, assertions, current knowledge projections, and freshness indexes. Versions 000007 and 000008 add embedding-space isolation and queryable outreach channels. Applied files are skipped.
 
 Dgraph schema application and SQL ledger insertion are separate transactions. A crash between them reapplies the same schema file; files must therefore be idempotent. Run one migration process at a time. Pair each SQL runtime database with its intended Dgraph database: a ledger from another environment cannot establish that a fresh graph is migrated.
 

@@ -12,11 +12,11 @@ trap cleanup EXIT
 
 podman run --detach \
   --name "$container_name" \
-  --publish "${NEURON_DGRAPH_HTTP_PORT:-8080}:8080" \
-  --publish "${NEURON_DGRAPH_GRPC_PORT:-9080}:9080" \
+  --publish "${NEURON_DGRAPH_HTTP_PORT:-18080}:8080" \
+  --publish "${NEURON_DGRAPH_GRPC_PORT:-19080}:9080" \
   "$image" >/dev/null
 
-health_url="http://localhost:${NEURON_DGRAPH_HTTP_PORT:-8080}/health"
+health_url="http://localhost:${NEURON_DGRAPH_HTTP_PORT:-18080}/health"
 for _ in $(seq 1 60); do
   if curl --fail --silent "$health_url" >/dev/null; then
     break
@@ -31,6 +31,6 @@ if ! curl --fail --silent "$health_url" >/dev/null; then
 fi
 
 NEURON_DGRAPH_ENABLED=true \
-NEURON_DGRAPH_ENDPOINT="localhost:${NEURON_DGRAPH_GRPC_PORT:-9080}" \
+NEURON_DGRAPH_ENDPOINT="localhost:${NEURON_DGRAPH_GRPC_PORT:-19080}" \
 NEURON_DGRAPH_TRANSPORT=grpc \
-  mix test --include integration test/neuron_dgraph_integration_test.exs
+  mix test --include integration test/neuron_dgraph_integration_test.exs test/neuron_campaign_pipeline_integration_test.exs

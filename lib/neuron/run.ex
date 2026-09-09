@@ -24,6 +24,7 @@ defmodule Neuron.Run do
   transition(:cancel, from: :planning, to: :cancelled)
   transition(:cancel, from: :executing, to: :cancelled)
   transition(:cancel, from: :needs_input, to: :cancelled)
+  transition(:cancel, from: :failed, to: :cancelled)
 end
 
 defmodule Neuron.RunWorker do
@@ -99,7 +100,9 @@ defmodule Neuron.StageWorker do
       data = Neuron.FSM.data(machine)
       stages = data.profile.stages()
       stage = Enum.fetch!(stages, data.stage_index)
-      opts = Keyword.put(data.opts, :run_id, id)
+
+      opts =
+        data.opts |> Keyword.put(:run_id, id) |> Keyword.put(:transition_version, machine.version)
 
       result =
         Neuron.Telemetry.span([:pipeline, :stage], %{run_id: id, stage: stage}, fn ->

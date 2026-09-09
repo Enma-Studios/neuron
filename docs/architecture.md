@@ -33,3 +33,11 @@ The graph describes organizations, employment, people, social accounts, posts/au
 ## Embedding
 
 A host supplies an Ecto repo and an Oban instance configured against that same repo. No Phoenix modules or dependencies are required. HTTP controllers can call `start_run/3`, store the returned ID, and poll `get_run/1` or subscribe to telemetry in their own application.
+
+## Campaign discovery and shared ingestion
+
+Seller intake never identifies the seller's own employees as prospects. A campaign pipeline retrieves shared knowledge, plans targeted searches, checkpoints child UUIDs, and submits one durable ingestion job per source. A waiting parent snoozes through Oban rather than holding a worker while children run. GenStage bounds concurrency inside search and embedding stages.
+
+Each source records full Markdown before normalization. Claims retain excerpt, source, authority and observation time; reconciliation preserves alternatives and selects current values. Entities have searchable text and local multilingual embeddings. Selection combines semantic and lexical relevance with role, geography, evidence quality and freshness, after enforcing professional-contact qualification and campaign repeat suppression.
+
+Graph writes and SQL checkpoints are separate transactions and must be replay-safe. Selection reservations live in SQL for atomic campaign/person exclusion; delivered domain results and evidence live in Dgraph. Failed campaigns retain reservations until resumed or cancelled. Prompt/model payloads are telemetry events, not a custom transcript file.

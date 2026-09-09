@@ -126,6 +126,20 @@ defmodule Neuron.FSM do
 
       if count != 1, do: P.repo().rollback(:stale)
       next = get(id)
+
+      if current_data[:profile] == Neuron.Coordinator.Campaign do
+        case event do
+          :finished ->
+            Neuron.Selection.delivered(id, Enum.map(payload.result.leads, & &1.person_id))
+
+          :cancel ->
+            Neuron.Selection.release(id)
+
+          _ ->
+            :ok
+        end
+      end
+
       record(next, event, payload)
       schedule(next, spec[:worker], Keyword.get(spec, :after, 0))
       next

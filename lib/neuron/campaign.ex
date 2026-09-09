@@ -5,7 +5,7 @@ defmodule Neuron.Campaign do
     %{
       key: :organization,
       label: "Organization",
-      prompt: "Which organization or domain is this campaign for?",
+      prompt: "What is your organization and website?",
       required: true
     },
     %{
@@ -30,12 +30,12 @@ defmodule Neuron.Campaign do
       key: :target_organizations,
       label: "Target organizations",
       prompt: "Which organization types, industries, or account traits are in scope?",
-      required: false
+      required: true
     },
     %{
       key: :geography,
       label: "Geography",
-      prompt: "Which countries, regions, or markets are preferred?",
+      prompt: "Which countries, regions, or markets should prospective customers be in?",
       required: false
     },
     %{
@@ -77,12 +77,14 @@ defmodule Neuron.Campaign do
   end
 
   @doc "Approve one or more URL-derived campaign proposals before running them."
-  def approve(%{campaigns: campaigns}, selection \\ :all) when is_list(campaigns) do
+  def approve(%{campaigns: campaigns} = details, selection \\ :all) when is_list(campaigns) do
+    partial = normalize_keys(Map.get(details, :partial, %{}))
+
     selected = select_campaigns(campaigns, selection)
 
     normalized =
       selected
-      |> Enum.map(&normalize_campaign/1)
+      |> Enum.map(&(merge_nonblank(&1, partial) |> normalize_campaign()))
       |> Enum.reduce_while([], fn
         {:ok, campaign}, acc -> {:cont, [campaign | acc]}
         {:needs_input, details}, _acc -> {:halt, {:needs_input, details}}
@@ -96,7 +98,7 @@ defmodule Neuron.Campaign do
 
   @doc "Run several approved campaigns, keeping each target counter independent."
   def run_many(campaigns, opts \\ []) when is_list(campaigns) do
-    opts = Keyword.delete(opts, :run_id)
+    opts = Keyword.drop(opts, [:run_id, :id])
     Enum.map(campaigns, &run(&1, opts))
   end
 
@@ -129,6 +131,8 @@ defmodule Neuron.Campaign do
       {:approval_required,
        %{
          campaigns: campaigns,
+         partial:
+           Map.drop(merged, [:candidate_campaigns, :approved_campaigns, :campaign_approval]),
          prompt:
            "Multiple campaign briefs were found. Approve one or more before research, or reply with action=different_campaign.",
          reason: :multiple_campaigns
@@ -178,168 +182,10 @@ defmodule Neuron.Campaign do
 
   defp select_campaigns(_campaigns, _), do: []
 
-  @doc "Run research repeatedly until the off-agent unique lead target is met."
+  @doc "Start and await a durable prospect-discovery campaign."
   def run(campaign, opts \\ []) when is_map(campaign) do
-    with {:ok, campaign} <- normalize_campaign(campaign),
-         {:ok, campaign_run_id} <- campaign_run_id(opts) do
-      target = max(integer(campaign[:lead_count] || campaign["lead_count"], 1), 1)
-      max_attempts = max(integer(opts[:max_attempts], 3), 1)
-      collect(campaign, opts, campaign_run_id, target, max_attempts, 1, %{}, [])
-    end
+    Neuron.run(Neuron.Coordinator.Campaign, %{approved_campaign: campaign}, opts)
   end
-
-  defp collect(campaign, opts, campaign_run_id, target, _max, _attempt, leads, failures)
-       when map_size(leads) >= target do
-    Neuron.Telemetry.emit([:campaign, :target], %{
-      run_id: campaign_run_id,
-      target_count: target,
-      unique_leads: map_size(leads),
-      status: :target_met
-    })
-
-    result = %{
-      status: :target_met,
-      campaign_run_id: campaign_run_id,
-      campaign: campaign,
-      target_count: target,
-      leads: Map.values(leads),
-      failures: failures
-    }
-
-    case Neuron.Schemas.validate_campaign_result(result) do
-      {:ok, _validated} ->
-        case persist_campaign(campaign, campaign_run_id, result.leads, failures, opts) do
-          :ok -> {:ok, result}
-          {:error, reason} -> {:error, {:graph_persist_failed, reason, result}}
-        end
-
-      {:error, errors} ->
-        {:error, {:invalid_campaign_result, errors}}
-    end
-  end
-
-  defp collect(campaign, opts, campaign_run_id, target, max_attempts, attempt, leads, failures)
-       when attempt <= max_attempts do
-    run_id = Ecto.UUID.generate()
-
-    Neuron.Telemetry.emit([:campaign, :attempt], %{
-      run_id: campaign_run_id,
-      attempt_run_id: run_id,
-      attempt: attempt,
-      target_count: target,
-      unique_leads: map_size(leads)
-    })
-
-    research_opts =
-      opts
-      |> Keyword.put(:run_id, run_id)
-      |> Keyword.put(:parent_run_id, campaign_run_id)
-      |> Keyword.put(:campaign_attempt, attempt)
-
-    case Neuron.Research.run(domain(campaign), fit_profile(campaign), research_opts) do
-      {:ok, result} ->
-        fresh =
-          Enum.reduce(result.leads || [], leads, fn lead, acc ->
-            Map.put_new(acc, lead_key(lead), lead)
-          end)
-
-        collect(
-          campaign,
-          opts,
-          campaign_run_id,
-          target,
-          max_attempts,
-          attempt + 1,
-          fresh,
-          failures
-        )
-
-      {:error, reason} ->
-        collect(campaign, opts, campaign_run_id, target, max_attempts, attempt + 1, leads, [
-          %{attempt: attempt, error: reason} | failures
-        ])
-    end
-  end
-
-  defp collect(campaign, opts, campaign_run_id, target, _max, _attempt, leads, failures) do
-    Neuron.Telemetry.emit([:campaign, :target], %{
-      run_id: campaign_run_id,
-      target_count: target,
-      unique_leads: map_size(leads),
-      status: :failed
-    })
-
-    result = %{
-      campaign_run_id: campaign_run_id,
-      campaign: campaign,
-      target_count: target,
-      leads: Map.values(leads),
-      failures: Enum.reverse(failures),
-      status: :failed
-    }
-
-    case Neuron.Schemas.validate_campaign_result(result) do
-      {:ok, _validated} ->
-        case persist_campaign(campaign, campaign_run_id, result.leads, result.failures, opts) do
-          :ok -> {:error, {:lead_target_unmet, result}}
-          {:error, reason} -> {:error, {:graph_persist_failed, reason, result}}
-        end
-
-      {:error, errors} ->
-        {:error, {:invalid_campaign_result, errors}}
-    end
-  end
-
-  defp persist_campaign(campaign, run_id, leads, _failures, opts) do
-    domain = domain(campaign)
-
-    lead_uids =
-      Enum.map(
-        leads,
-        &%{"uid" => blank_uid("lead", domain <> to_string(&1["person_name"] || &1[:person_name]))}
-      )
-
-    graph =
-      %{
-        "uid" => blank_uid("campaign", run_id),
-        "dgraph.type" => ["Campaign", "Entity"],
-        "name" => to_string(campaign[:name] || campaign[:organization] || domain),
-        "objective" => to_string(campaign[:offer] || "Lead generation"),
-        "leads" => lead_uids,
-        "target_geographies" =>
-          Enum.map(
-            List.wrap(campaign[:geography]),
-            &%{"name" => to_string(&1), "dgraph.type" => ["Geography", "Entity"]}
-          ),
-        "sources" => []
-      }
-
-    if Keyword.get(opts, :persist, true) do
-      Neuron.Graph.upsert(
-        graph,
-        run_id: run_id,
-        task_id: "campaign:graph_upsert"
-      )
-    else
-      :ok
-    end
-  end
-
-  defp campaign_run_id(opts) do
-    case Keyword.get(opts, :run_id) do
-      nil -> {:ok, Ecto.UUID.generate()}
-      run_id -> Ecto.UUID.cast(run_id) |> normalize_campaign_run_id(run_id)
-    end
-  end
-
-  defp normalize_campaign_run_id({:ok, run_id}, _original), do: {:ok, run_id}
-
-  defp normalize_campaign_run_id(:error, original),
-    do: {:error, {:invalid_campaign_run_id, original}}
-
-  defp blank_uid(kind, value),
-    do:
-      "_:#{kind}-#{Base.encode16(:crypto.hash(:sha256, value), case: :lower) |> binary_part(0, 20)}"
 
   defp scrape_answers(nil, _opts), do: {:ok, %{}}
   defp scrape_answers("", _opts), do: {:ok, %{}}
@@ -349,6 +195,17 @@ defmodule Neuron.Campaign do
          html when is_binary(html) <- page[:html] || page["html"],
          {:ok, snapshot} <-
            Neuron.Snapshot.from_html(html, %{url: url, title: page[:title], run_id: opts[:run_id]}),
+         {:ok, _} <-
+           Neuron.Knowledge.save_document(
+             %{
+               url: url,
+               title: page[:title] || "",
+               markdown: snapshot.markdown,
+               published_at: nil,
+               fetched_at: DateTime.utc_now()
+             },
+             opts
+           ),
          {:ok, prompt} <-
            Neuron.Prompt.render_file(
              "campaign_intake.eex",
@@ -380,6 +237,24 @@ defmodule Neuron.Campaign do
   @doc "Validate a supplied or approved campaign brief."
   def normalize_campaign(values) do
     values = normalize_keys(values)
+    seller = normalize_keys(values[:seller_profile] || %{})
+    target = normalize_keys(values[:target_profile] || %{})
+
+    values =
+      Map.merge(
+        %{
+          organization: seller[:name] || seller[:domain],
+          domain: seller[:domain],
+          field: seller[:field] || profile_value(values[:fit_profile], "field"),
+          offer: seller[:offer] || profile_value(values[:fit_profile], "offer"),
+          seller_geography: seller[:geography],
+          target_roles: target[:roles] || profile_value(values[:fit_profile], "target_role"),
+          target_organizations: target[:markets] || profile_markets(values[:fit_profile]),
+          geography: target[:geography],
+          exclusions: target[:exclusions]
+        },
+        values
+      )
 
     values =
       if blank?(values[:organization]) and not blank?(values[:domain]),
@@ -393,7 +268,38 @@ defmodule Neuron.Campaign do
       domain = values[:domain] || domain_from_url(values[:url]) || hostname(organization)
 
       if is_binary(domain) and domain != "" do
-        {:ok, Map.merge(values, %{domain: domain, fit_profile: fit_profile(values)})}
+        profile = fit_profile(values)
+
+        seller = %{
+          domain: domain,
+          name: organization,
+          field: values[:field],
+          offer: values[:offer] || profile[:offer],
+          geography: List.wrap(values[:seller_geography])
+        }
+
+        target = %{
+          markets: List.wrap(values[:target_organizations] || profile[:target_organizations]),
+          roles: List.wrap(values[:target_roles] || profile_value(profile, "target_role")),
+          geography: List.wrap(values[:geography]),
+          exclusions: List.wrap(values[:exclusions])
+        }
+
+        with {:ok, seller} <- Neuron.Contracts.validate(Neuron.Contracts.Seller, seller),
+             {:ok, target} <- Neuron.Contracts.validate(Neuron.Contracts.Target, target),
+             {:ok, campaign_id} <- Ecto.UUID.cast(values[:campaign_id] || Ecto.UUID.generate()) do
+          {:ok,
+           Map.merge(values, %{
+             campaign_id: campaign_id,
+             lead_count: parse_count(values[:lead_count]),
+             domain: domain,
+             seller_profile: Neuron.Contracts.plain(seller),
+             target_profile: Neuron.Contracts.plain(target),
+             fit_profile: profile
+           })}
+        else
+          error -> {:error, {:invalid_campaign, error}}
+        end
       else
         {:needs_input,
          %{
@@ -414,8 +320,9 @@ defmodule Neuron.Campaign do
     end)
   end
 
-  defp satisfied_by_profile?(key, values) when key in [:field, :offer, :target_roles],
-    do: is_map(values[:fit_profile])
+  defp satisfied_by_profile?(key, values)
+       when key in [:field, :offer, :target_roles, :target_organizations],
+       do: is_map(values[:fit_profile])
 
   defp satisfied_by_profile?(_key, _values), do: false
 
@@ -436,24 +343,40 @@ defmodule Neuron.Campaign do
       }
   end
 
-  defp domain(campaign),
-    do:
-      campaign[:domain] || campaign["domain"] ||
-        hostname(campaign[:organization] || campaign["organization"])
-
-  defp lead_key(lead) do
-    String.downcase(
-      to_string(
-        lead["email"] || lead[:email] || lead["profile_url"] || lead[:profile_url] ||
-          lead["person_name"] || lead[:person_name] || inspect(lead)
-      )
-    )
+  defp profile_value(profile, category) when is_map(profile) do
+    profile
+    |> Map.get(:requirements, Map.get(profile, "requirements", []))
+    |> List.wrap()
+    |> Enum.filter(fn requirement ->
+      is_map(requirement) and
+        Map.get(requirement, :category, Map.get(requirement, "category")) == category
+    end)
+    |> Enum.map(&Map.get(&1, :description, Map.get(&1, "description")))
+    |> Enum.reject(&blank?/1)
+    |> case do
+      [] -> nil
+      [value] -> value
+      values -> values
+    end
   end
 
+  defp profile_value(_, _), do: nil
+
+  defp profile_markets(profile) when is_map(profile),
+    do: Map.get(profile, :target_organizations, Map.get(profile, "target_organizations"))
+
+  defp profile_markets(_), do: nil
+
   defp normalize_keys(map) when is_map(map),
-    do: Map.new(map, fn {k, v} -> {if(is_binary(k), do: String.to_atom(k), else: k), v} end)
+    do: Map.new(map, fn {k, v} -> {input_key(k), v} end)
 
   defp normalize_keys(other), do: other
+
+  @input_keys ~w(organization domain field offer name url website seller_geography target_roles target_organizations geography exclusions lead_count campaign_id seller_profile target_profile roles markets fit_profile preferred_geographies threshold assertions action campaigns candidate_campaigns approved_campaigns campaign_approval)a
+  defp input_key(key) when is_binary(key),
+    do: Enum.find(@input_keys, key, &(Atom.to_string(&1) == key))
+
+  defp input_key(key), do: key
 
   defp domain_from_url(url) when is_binary(url), do: hostname(url)
   defp domain_from_url(_), do: nil
@@ -470,12 +393,12 @@ defmodule Neuron.Campaign do
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank?(_), do: false
 
-  defp integer(value, _default) when is_integer(value), do: value
+  defp parse_count(value) when is_integer(value) and value > 0, do: value
 
-  defp integer(value, default) do
-    case Integer.parse(to_string(value || "")) do
-      {n, _} -> n
-      :error -> default
+  defp parse_count(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {count, ""} when count > 0 -> count
+      _ -> raise ArgumentError, "lead_count must be a positive integer"
     end
   end
 
@@ -510,11 +433,8 @@ defmodule Neuron.Coordinator.Campaign do
 
   def plan(input, context), do: Neuron.Campaign.intake(input, context[:options] || [])
 
+  defdelegate stages(), to: Neuron.CampaignPipeline
+  defdelegate stage(stage, data, opts), to: Neuron.CampaignPipeline
   @impl true
-  def run(campaign, context),
-    do:
-      Neuron.Campaign.run(
-        campaign,
-        Keyword.put(context[:options] || [], :run_id, context[:run_id])
-      )
+  def run(_campaign, _context), do: raise("campaigns execute as checkpointed stages")
 end
