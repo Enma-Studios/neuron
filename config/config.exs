@@ -15,7 +15,12 @@ config :neuron,
 
 config :neuron, telemetry: [capture_payloads: false]
 
-chromium = System.get_env("CHROMIUM", "/usr/bin/chromium")
+chromium =
+  System.get_env("CHROMIUM") ||
+    Enum.find(
+      ["/usr/bin/chromium", "/snap/bin/chromium", "/usr/bin/chromium-browser"],
+      &File.exists?/1
+    )
 
 config :pinocchio,
   browser:

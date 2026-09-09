@@ -19,6 +19,8 @@ Local Chromium is the preferred browser. Browser Use is selected after a
 recorded local blockage. Configure both providers and the Dgraph endpoint in
 `config/runtime.exs` or application configuration.
 
+Z.AI requests are pinned to `glm-5.3-flash`; no alternate model is accepted.
+
 Pinocchio is fetched from the private GitHub repository over SSH. The local
 browser uses `/usr/bin/chromium` by default; set `CHROMIUM` for another binary.
 

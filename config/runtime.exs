@@ -6,7 +6,7 @@ if config_env() == :prod do
     model: [
       api_key: System.get_env("ZAI_API_KEY"),
       base_url: System.get_env("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4"),
-      model: System.get_env("ZAI_MODEL", "glm-5.3-flash")
+      model: "glm-5.3-flash"
     ],
     telemetry: [capture_payloads: System.get_env("NEURON_CAPTURE_PAYLOADS", "false") == "true"],
     browser: [
@@ -16,7 +16,12 @@ if config_env() == :prod do
 
   config :mnesia, dir: String.to_charlist(System.get_env("NEURON_DATA_DIR", "data/neuron"))
 
-  chromium = System.get_env("CHROMIUM", "/usr/bin/chromium")
+  chromium =
+    System.get_env("CHROMIUM") ||
+      Enum.find(
+        ["/usr/bin/chromium", "/snap/bin/chromium", "/usr/bin/chromium-browser"],
+        &File.exists?/1
+      )
 
   config :pinocchio,
     browser:

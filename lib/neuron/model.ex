@@ -6,6 +6,7 @@ end
 
 defmodule Neuron.Model.ZAI do
   @behaviour Neuron.Model
+  @model "glm-5.3-flash"
 
   @impl true
   def complete(messages, opts \\ []) do
@@ -21,7 +22,7 @@ defmodule Neuron.Model.ZAI do
       {:error, :missing_zai_api_key}
     else
       body = %{
-        model: config[:model] || "glm-5.3-flash",
+        model: @model,
         messages: messages,
         stream: false,
         temperature: config[:temperature] || 1,
