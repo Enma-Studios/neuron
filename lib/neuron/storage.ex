@@ -94,7 +94,7 @@ defmodule Neuron.Storage do
   def pending_outbox do
     transaction(
       fn ->
-        :mnesia.match_object({:neuron_outbox, :_, :_, :_, :pending, :_, :_})
+        :mnesia.match_object({:neuron_outbox, :_, :_, :_, :_, :pending, :_, :_})
       end,
       %{task_id: "outbox:pending"}
     )

@@ -9,10 +9,7 @@ defmodule Neuron.Snapshot do
 
     markdown =
       if Code.ensure_loaded?(Htmd) do
-        case apply(Htmd, :convert, [cleaned, [skip_tags: ["script", "style", "nav", "footer"]]]) do
-          {:ok, value} -> value
-          _ -> fallback_markdown(cleaned)
-        end
+        convert_with_htmd(cleaned)
       else
         fallback_markdown(cleaned)
       end
@@ -39,6 +36,15 @@ defmodule Neuron.Snapshot do
     |> String.replace(~r/<!--.*?-->/s, "")
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
+  end
+
+  defp convert_with_htmd(html) do
+    case apply(Htmd, :convert, [html, [skip_tags: ["script", "style", "nav", "footer"]]]) do
+      {:ok, value} -> value
+      _ -> fallback_markdown(html)
+    end
+  rescue
+    _ -> fallback_markdown(html)
   end
 
   defp fallback_markdown(html), do: Regex.replace(~r/<[^>]+>/, html, "") |> String.trim()
