@@ -16,11 +16,15 @@ defmodule Neuron.Prompt do
       try do
         prompt = EEx.eval_string(template, assigns: Map.to_list(assigns))
 
-        Neuron.Telemetry.transcript(opts, "prompt.rendered", %{
-          template: opts[:template],
-          version: version,
-          prompt: prompt
-        })
+        Neuron.Telemetry.emit(
+          [:prompt, :rendered],
+          Neuron.Telemetry.trace_metadata(opts)
+          |> Map.merge(%{
+            template: opts[:template],
+            version: version,
+            prompt: Neuron.Telemetry.summarize(prompt)
+          })
+        )
 
         {:ok, prompt}
       rescue

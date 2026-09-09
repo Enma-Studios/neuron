@@ -1,5 +1,5 @@
 defmodule Neuron.Storage do
-  @moduledoc "SQL event history for prompts, tool calls, handovers, and run decisions."
+  @moduledoc "SQL transition history for durable runs and handovers."
   import Ecto.Query
   alias Neuron.Persistence, as: P
   alias Neuron.FSM.Event

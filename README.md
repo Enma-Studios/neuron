@@ -104,11 +104,7 @@ Neuron.cancel_run(id)
 Neuron.resume_run(id) # failed runs; failed pipelines keep their checkpoint
 ```
 
-Attach normal `:telemetry` handlers for Neuron, Ecto, and Oban. No custom telemetry log consumer is installed. Prompts and model responses are recorded in SQL when a `run_id` is present. To export a completed history yourself:
-
-```elixir
-File.write!("/tmp/nyx-session-transcript", inspect(Neuron.events(id), pretty: true, limit: :infinity))
-```
+Attach normal `:telemetry` handlers for Neuron, Ecto, and Oban. Neuron emits every event both at its specific event name and through the root `[:neuron]` event, so a consumer can capture the complete trace. Prompt and model payloads are controlled by `capture_payloads`; production applications should attach their own sink. SQL retains durable transition history through `Neuron.events/1`.
 
 See [operations](docs/operations.md) for event names, retry behavior, and shutdown.
 

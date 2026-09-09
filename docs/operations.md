@@ -47,15 +47,9 @@ Run options contain a stable trace ID; run and task IDs correlate source/model a
 
 ## History and export
 
-Rendered prompts and model request/response content are recorded with a run ID in `neuron_events`. Transition events contain state/version handovers. This SQL history persists independently of telemetry handlers and Oban's finished-job pruning. `Neuron.events(id)` decodes events in order. Model/tool history payloads include `data` and correlation `metadata`.
+Rendered prompts, model request/response summaries, and transition events are emitted through the root `[:neuron]` telemetry event with correlation IDs. This telemetry is independent of Oban's finished-job pruning. `Neuron.events(id)` returns durable transition history; telemetry consumers receive prompt and model payloads according to the `capture_payloads` setting.
 
-```elixir
-run = Neuron.get_run(id)
-transcript = %{run: run, events: Neuron.events(id)}
-File.write!("/tmp/nyx-session-transcript", inspect(transcript, pretty: true, limit: :infinity))
-```
-
-A campaign's research attempts use IDs `<campaign-run-id>-attempt-<number>`; export their events too for the entire research history. SQL checkpoints preserve in-progress outputs when graph persistence fails. Supply credentials through application configuration, not run options stored in SQL. Apply your organization's retention/access controls to the SQL database and exports.
+A campaign's research attempts use IDs `<campaign-run-id>-attempt-<number>`. Attach a telemetry consumer to `[:neuron]` when you need a complete external run log. SQL checkpoints preserve in-progress outputs when graph persistence fails. Supply credentials through application configuration, not run options stored in SQL. Apply your organization's retention/access controls to the SQL database and exports.
 
 ## Checks
 

@@ -41,8 +41,6 @@ defmodule Neuron.Model.ZAI do
         |> Map.merge(%{model: body.model, prompt: Neuron.Telemetry.summarize(messages)})
       )
 
-      Neuron.Telemetry.transcript(opts, "zai.request", %{model: body.model, messages: messages})
-
       case apply(Req, :post, [
              url,
              [headers: headers, json: body, receive_timeout: config[:timeout] || 120_000]
@@ -60,11 +58,15 @@ defmodule Neuron.Model.ZAI do
             })
           )
 
-          Neuron.Telemetry.transcript(opts, "zai.response", %{
-            model: body.model,
-            content: message["content"],
-            tool_calls: message["tool_calls"] || []
-          })
+          Neuron.Telemetry.emit(
+            [:model, :response],
+            Neuron.Telemetry.trace_metadata(opts)
+            |> Map.merge(%{
+              model: body.model,
+              content: Neuron.Telemetry.summarize(message["content"]),
+              tool_calls: message["tool_calls"] || []
+            })
+          )
 
           {:ok, response}
 

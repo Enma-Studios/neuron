@@ -3,7 +3,10 @@ defmodule Neuron.Telemetry do
   @compile {:no_warn_undefined, :telemetry}
 
   def emit(event, metadata \\ %{}, measurements \\ %{}) do
-    :telemetry.execute([:neuron | List.wrap(event)], measurements, normalize(metadata))
+    full_event = [:neuron | List.wrap(event)]
+    metadata = normalize(metadata)
+    :telemetry.execute([:neuron], measurements, Map.put(metadata, :event, full_event))
+    :telemetry.execute(full_event, measurements, metadata)
 
     :ok
   end
@@ -63,14 +66,6 @@ defmodule Neuron.Telemetry do
         bytes: byte_size(:erlang.term_to_binary(value))
       }
     end
-  end
-
-  def transcript(opts, event, payload) do
-    if run_id = opts[:run_id] do
-      Neuron.Storage.next_event(run_id, event, payload, trace_metadata(opts))
-    end
-
-    :ok
   end
 
   defp normalize(metadata), do: Map.new(metadata)

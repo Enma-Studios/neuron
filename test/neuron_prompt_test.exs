@@ -15,4 +15,15 @@ defmodule Neuron.PromptTest do
 
     assert prompt =~ "Ecto output contract"
   end
+
+  test "ships the campaign intake prompt with its URL evidence assigns" do
+    assert {:ok, prompt} =
+             Neuron.Prompt.render_file("campaign_intake.eex", %{
+               url: "https://example.org",
+               evidence: "Example evidence"
+             })
+
+    assert prompt =~ "https://example.org"
+    assert prompt =~ "Example evidence"
+  end
 end
