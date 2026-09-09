@@ -30,7 +30,6 @@ Mnesia or Dgraph.
 | `NEURON_DATA_DIR` | Production Mnesia directory | `data/neuron` |
 | `NEURON_BROWSER_POOL_SIZE` | Pinocchio pool size in releases | `4` |
 | `NEURON_RECOVERY_ENABLED` | Re-admit unfinished runs | `true` |
-| `NEURON_ENABLE_ROCKSDB` | Fetch the optional Mnesia RocksDB backend | unset |
 | `NEURON_ENABLE_LOCAL_ML` | Fetch optional Nx/Bumblebee/EXLA dependencies | unset |
 | `NEURON_CAPTURE_PAYLOADS` | Include complete telemetry payloads | `false` |
 
@@ -77,6 +76,8 @@ automatic re-admission but does not delete or alter stored records.
 
 ## Optional native dependencies
 
-Set `NEURON_ENABLE_ROCKSDB=true` before `mix deps.get` to use
-`mnesia_rocksdb`; the portable fallback is Mnesia `disc_copies`. Set
-`NEURON_ENABLE_LOCAL_ML=true` to fetch the optional local embedding stack.
+`mnesia_rocksdb` is included in the normal dependency set and is selected by
+the default `storage: [backend: :rocksdb]` configuration. It needs a native
+compiler/toolchain for the host architecture; Neuron falls back to Mnesia
+`disc_copies` when the adapter cannot load. Set `NEURON_ENABLE_LOCAL_ML=true`
+to fetch the optional local embedding stack.

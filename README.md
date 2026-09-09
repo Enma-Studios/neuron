@@ -74,19 +74,20 @@ If the SSH agent has multiple keys, select the GitHub key with your normal
 `~/.ssh/config` host entry. Do not put private keys or API keys in the
 repository.
 
-The optional native dependencies are intentionally opt-in:
+The RocksDB-backed Mnesia adapter is part of the default dependency set. Local
+embedding dependencies remain opt-in:
 
 ```sh
-# mnesia_rocksdb for the durable RocksDB-backed execution store
-NEURON_ENABLE_ROCKSDB=true mix deps.get
+# mnesia_rocksdb is included by default
+mix deps.get
 
 # Nx/Bumblebee/EXLA for local model embeddings
 NEURON_ENABLE_LOCAL_ML=true mix deps.get
 ```
 
 `mnesia_rocksdb` and the local ML stack need a compiler/toolchain appropriate
-to the host architecture. Without those flags, Neuron uses Mnesia
-`disc_copies` and its deterministic embedding fallback.
+to the host architecture. If RocksDB cannot load on a host, Neuron falls back
+to Mnesia `disc_copies` and keeps the deterministic embedding fallback.
 
 ## Credentials and environment
 
@@ -483,8 +484,8 @@ unavailable, the local run remains inspectable and the entry remains pending.
 ## Mnesia durability and recovery
 
 Mnesia tables contain runs, agents, operations, events, and outbox entries.
-The configured default requests RocksDB copies when `mnesia_rocksdb` is loaded;
-otherwise Neuron explicitly falls back to `disc_copies`.
+The configured default uses RocksDB copies through `mnesia_rocksdb`; Neuron
+explicitly falls back to `disc_copies` when the adapter cannot load.
 
 - Development data: `priv/neuron_data/dev`
 - Test data: `tmp/neuron_data/test`
@@ -615,9 +616,10 @@ variable has no effect.
 
 **RocksDB or EXLA fails to compile**
 
-Unset the corresponding `NEURON_ENABLE_*` flag for the portable fallback, or
-install the compiler, Rust/NIF, and architecture-specific libraries required
-by that native dependency.
+Install the compiler, Rust/NIF, and architecture-specific libraries required
+by the native dependency. Neuron automatically uses Mnesia `disc_copies` if
+the RocksDB adapter cannot load; EXLA remains controlled by
+`NEURON_ENABLE_LOCAL_ML`.
 
 ## Project layout
 
