@@ -1,5 +1,5 @@
 defmodule Neuron.Research do
-  @moduledoc "Search, browse, extract, qualify, and publish campaign leads."
+  @moduledoc "Search, browse, extract, qualify, and return campaign leads."
 
   @default_queries [
     "<%=DOMAIN%> leadership founders team contact",
@@ -26,26 +26,23 @@ defmodule Neuron.Research do
           with {:ok, confirmed} <- confirm_research_output(result, opts) do
             graph = graph_facts(confirmed, pages, opts)
 
-            {:ok, outbox_id} =
-              Neuron.Outbox.enqueue(run_id, :research_bundle, %{
-                domain: domain,
-                target_profile: confirmed.target_profile,
-                organization: confirmed.organization,
-                people: confirmed.people,
-                leads: confirmed.leads,
-                posts: confirmed.posts,
-                drafts: confirmed.drafts,
-                assertions: confirmed.assertions,
-                graph: graph
-              })
-
-            {:ok, Map.merge(confirmed, %{run_id: run_id, outbox_id: outbox_id, sources: pages})}
+            with :ok <- persist_graph(graph, run_id, opts) do
+              {:ok, Map.merge(confirmed, %{run_id: run_id, sources: pages})}
+            end
           else
             {:error, reason} -> {:error, reason}
           end
         end
       end
     )
+  end
+
+  defp persist_graph(graph, run_id, opts) do
+    if Keyword.get(opts, :persist, true) do
+      Neuron.Graph.upsert(graph, run_id: run_id, task_id: "research:graph_upsert")
+    else
+      :ok
+    end
   end
 
   defp confirm_research_output(result, opts) do

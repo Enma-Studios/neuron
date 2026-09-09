@@ -8,7 +8,6 @@ defmodule Neuron.Application do
     children = [
       {Neuron.Storage, []},
       {Neuron.Dgraph, []},
-      {Neuron.Outbox, []},
       {Neuron.RunRegistry, []},
       {Neuron.RunSupervisor, []},
       {Neuron.AgentSupervisor, []},

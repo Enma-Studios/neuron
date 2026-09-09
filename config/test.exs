@@ -1,7 +1,7 @@
 import Config
 
 config :neuron,
-  storage: [data_dir: "tmp/neuron_data/test"],
+  storage: [data_dir: "tmp/neuron_data/test", backend: :mnesia],
   dgraph: [
     enabled: System.get_env("NEURON_DGRAPH_ENABLED", "false") == "true",
     endpoint: System.get_env("NEURON_DGRAPH_ENDPOINT", "localhost:9080"),

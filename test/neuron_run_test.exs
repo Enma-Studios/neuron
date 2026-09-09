@@ -20,13 +20,10 @@ defmodule Neuron.RunTest do
     assert %{status: :complete, result: %{name: "Acme"}} = Neuron.get_agent(agent_id)
     assert length(Neuron.events(id)) >= 7
 
-    assert {:ok, outbox_id} = Neuron.Outbox.enqueue(id, :lead_discovered, %{name: "Acme"})
-    assert {:atomic, pending} = Neuron.Storage.pending_outbox()
+    assert {:atomic, events} =
+             Neuron.Storage.transaction(fn -> :mnesia.all_keys(:neuron_event) end)
 
-    assert Enum.any?(pending, fn {:neuron_outbox, key, ^id, :lead_discovered, _payload, :pending,
-                                  _, _} ->
-             key == outbox_id
-           end)
+    assert Enum.any?(events, &match?({^id, _}, &1))
   end
 
   test "blocking run returns lead fields at the response level" do

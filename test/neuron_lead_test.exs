@@ -56,7 +56,7 @@ defmodule Neuron.IntelligenceTest do
     :ok
   end
 
-  test "explores, embeds, scores, and queues a durable snapshot" do
+  test "explores, embeds, scores, and returns a snapshot" do
     fit = %{
       requirements: [%{category: "industry", description: "fintech payments"}],
       preferred_geographies: ["US"],
@@ -67,12 +67,12 @@ defmodule Neuron.IntelligenceTest do
              Neuron.Intelligence.explore("https://example.test", fit,
                adapter: BrowserAdapter,
                embedding_provider: Neuron.Embedding.Stub,
-               run_id: "intelligence-test"
+               run_id: "intelligence-test",
+               persist: false
              )
 
     assert result.decision.selected
     assert result.decision.score == 1.0
     assert result.snapshot.markdown =~ "Fintech platform"
-    assert is_binary(result.outbox_id)
   end
 end

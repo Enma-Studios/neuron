@@ -85,7 +85,6 @@ defmodule Neuron.Schemas.CampaignResult do
     field(:target_count, :integer)
     field(:campaign, :map, default: %{})
     field(:failures, {:array, :map}, default: [])
-    field(:campaign_outbox_id, :string)
     embeds_many(:leads, Neuron.Schemas.Lead)
   end
 
@@ -97,8 +96,7 @@ defmodule Neuron.Schemas.CampaignResult do
         :campaign_run_id,
         :target_count,
         :campaign,
-        :failures,
-        :campaign_outbox_id
+        :failures
       ])
       |> cast_embed(:leads, with: &Neuron.Schemas.Lead.changeset/2)
       |> validate_required([:status, :campaign_run_id, :target_count])

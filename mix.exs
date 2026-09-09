@@ -28,7 +28,8 @@ defmodule Neuron.MixProject do
       {:req, "~> 0.5"},
       {:dlex, github: "Enma-Studios/dlex", branch: "master", optional: true},
       {:htmd, "~> 0.2", optional: true},
-      {:mnesia_rocksdb, github: "aeternity/mnesia_rocksdb", branch: "master", manager: :rebar3}
+      {:mnesia_rocksdb,
+       github: "aeternity/mnesia_rocksdb", branch: "master", manager: :rebar3, runtime: false}
     ]
 
     ml_deps =

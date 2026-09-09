@@ -192,7 +192,7 @@ defmodule Neuron.Campaign do
     end
   end
 
-  defp collect(campaign, _opts, campaign_run_id, target, _max, _attempt, leads, failures)
+  defp collect(campaign, opts, campaign_run_id, target, _max, _attempt, leads, failures)
        when map_size(leads) >= target do
     Neuron.Telemetry.emit([:campaign, :target], %{
       run_id: campaign_run_id,
@@ -210,11 +210,15 @@ defmodule Neuron.Campaign do
       failures: failures
     }
 
-    with {:ok, _validated} <- Neuron.Schemas.validate_campaign_result(result) do
-      campaign_outbox_id = persist_campaign(campaign, campaign_run_id, result.leads, failures)
-      {:ok, Map.put(result, :campaign_outbox_id, campaign_outbox_id)}
-    else
-      {:error, errors} -> {:error, {:invalid_campaign_result, errors}}
+    case Neuron.Schemas.validate_campaign_result(result) do
+      {:ok, _validated} ->
+        case persist_campaign(campaign, campaign_run_id, result.leads, failures, opts) do
+          :ok -> {:ok, result}
+          {:error, reason} -> {:error, {:graph_persist_failed, reason, result}}
+        end
+
+      {:error, errors} ->
+        {:error, {:invalid_campaign_result, errors}}
     end
   end
 
@@ -261,7 +265,7 @@ defmodule Neuron.Campaign do
     end
   end
 
-  defp collect(campaign, _opts, campaign_run_id, target, _max, _attempt, leads, failures) do
+  defp collect(campaign, opts, campaign_run_id, target, _max, _attempt, leads, failures) do
     Neuron.Telemetry.emit([:campaign, :target], %{
       run_id: campaign_run_id,
       target_count: target,
@@ -278,17 +282,19 @@ defmodule Neuron.Campaign do
       status: :failed
     }
 
-    with {:ok, _validated} <- Neuron.Schemas.validate_campaign_result(result) do
-      campaign_outbox_id =
-        persist_campaign(campaign, campaign_run_id, result.leads, result.failures)
+    case Neuron.Schemas.validate_campaign_result(result) do
+      {:ok, _validated} ->
+        case persist_campaign(campaign, campaign_run_id, result.leads, result.failures, opts) do
+          :ok -> {:error, {:lead_target_unmet, result}}
+          {:error, reason} -> {:error, {:graph_persist_failed, reason, result}}
+        end
 
-      {:error, {:lead_target_unmet, Map.put(result, :campaign_outbox_id, campaign_outbox_id)}}
-    else
-      {:error, errors} -> {:error, {:invalid_campaign_result, errors}}
+      {:error, errors} ->
+        {:error, {:invalid_campaign_result, errors}}
     end
   end
 
-  defp persist_campaign(campaign, run_id, leads, failures) do
+  defp persist_campaign(campaign, run_id, leads, _failures, opts) do
     domain = domain(campaign)
     lead_uids = Enum.map(leads, &%{"uid" => blank_uid("lead", domain <> lead_key(&1))})
 
@@ -308,10 +314,15 @@ defmodule Neuron.Campaign do
         "sources" => []
       }
 
-    {:ok, outbox_id} =
-      Neuron.Outbox.enqueue(run_id, :campaign, %{graph: graph, failures: failures})
-
-    outbox_id
+    if Keyword.get(opts, :persist, true) do
+      Neuron.Graph.upsert(
+        graph,
+        run_id: run_id,
+        task_id: "campaign:graph_upsert"
+      )
+    else
+      :ok
+    end
   end
 
   defp blank_uid(kind, value),

@@ -4,7 +4,7 @@ defmodule Neuron.Storage do
 
   Agent execution state lives in Mnesia. The default configuration requires
   `mnesia_rocksdb` and uses its `rocksdb_copies` backend. Domain facts are
-  deliberately published elsewhere.
+  written synchronously to Dgraph by the research workflows.
   """
 
   use GenServer
@@ -16,7 +16,6 @@ defmodule Neuron.Storage do
     {:neuron_operation,
      [:id, :run_id, :agent_id, :kind, :attempt, :status, :request, :response, :updated_at]},
     {:neuron_event, [:key, :run_id, :sequence, :type, :payload, :inserted_at]},
-    {:neuron_outbox, [:id, :run_id, :kind, :payload, :status, :attempts, :updated_at]},
     {:neuron_migration, [:id, :backend, :version, :name, :applied_at]}
   ]
 
@@ -37,27 +36,6 @@ defmodule Neuron.Storage do
 
   def put_agent(agent, metadata \\ %{}), do: write(:neuron_agent, agent, metadata)
   def put_operation(operation, metadata \\ %{}), do: write(:neuron_operation, operation, metadata)
-  def put_outbox(entry, metadata \\ %{}), do: write(:neuron_outbox, entry, metadata)
-
-  def update_outbox(id, status, attempts \\ nil, metadata \\ %{}) do
-    transaction(
-      fn ->
-        case :mnesia.read(:neuron_outbox, id) do
-          [{:neuron_outbox, ^id, run_id, kind, payload, _old_status, old_attempts, _updated}] ->
-            :mnesia.write(
-              {:neuron_outbox, id, run_id, kind, payload, status, attempts || old_attempts,
-               DateTime.utc_now()}
-            )
-
-            :ok
-
-          [] ->
-            :not_found
-        end
-      end,
-      Map.merge(%{task_id: "outbox:update", operation_id: id}, metadata)
-    )
-  end
 
   def next_event(run_id, type, payload, metadata \\ %{}) do
     transaction(
@@ -87,15 +65,6 @@ defmodule Neuron.Storage do
         |> Enum.sort_by(&elem(&1, 3))
       end,
       %{run_id: run_id, task_id: "events:read"}
-    )
-  end
-
-  def pending_outbox do
-    transaction(
-      fn ->
-        :mnesia.match_object({:neuron_outbox, :_, :_, :_, :_, :pending, :_, :_})
-      end,
-      %{task_id: "outbox:pending"}
     )
   end
 

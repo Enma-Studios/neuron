@@ -13,14 +13,7 @@ defmodule Neuron.Intelligence do
              {:ok, snapshot} <- snapshot(page, url, opts),
              {:ok, embedding} <- embed(snapshot.markdown, opts),
              {:ok, decision} <- Neuron.Lead.evaluate(candidate(page, snapshot), fit_profile, opts),
-             {:ok, outbox_id} <-
-               Neuron.Outbox.enqueue(run_id, :web_snapshot, %{
-                 url: snapshot[:url] || url,
-                 title: snapshot[:title] || page[:title],
-                 markdown: snapshot.markdown,
-                 embedding: embedding,
-                 decision: decision
-               }) do
+             :ok <- persist_snapshot(run_id, snapshot, embedding, decision, opts) do
           {:ok,
            %{
              run_id: run_id,
@@ -28,12 +21,31 @@ defmodule Neuron.Intelligence do
              provider: page[:provider],
              snapshot: snapshot,
              embedding: embedding,
-             decision: decision,
-             outbox_id: outbox_id
+             decision: decision
            }}
         end
       end
     )
+  end
+
+  defp persist_snapshot(run_id, snapshot, embedding, decision, opts) do
+    if Keyword.get(opts, :persist, true) do
+      Neuron.Graph.upsert(
+        %{
+          "uid" => "_:snapshot-#{run_id}",
+          "dgraph.type" => ["Snapshot", "Entity"],
+          "url" => snapshot[:url],
+          "markdown" => snapshot.markdown,
+          "embedding" => embedding,
+          "reason" => Enum.join(decision.reasons, " "),
+          "fit_score" => decision.score
+        },
+        run_id: run_id,
+        task_id: "intelligence:graph_upsert"
+      )
+    else
+      :ok
+    end
   end
 
   def explore_many(urls, fit_profile, opts \\ []) do
