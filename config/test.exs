@@ -17,3 +17,9 @@ config :pinocchio, browser: [executable: nil, endpoint: nil, provider: nil]
 config :ex_unit, exclude: [integration: true]
 
 config :logger, level: :warning
+
+if url = System.get_env("NEURON_TEST_POSTGRES_URL") do
+  config :neuron, repo: Neuron.Test.PostgresRepo
+  config :neuron, Neuron.Test.PostgresRepo, url: url, pool_size: 5
+  config :neuron, :oban, engine: Oban.Engines.Basic, notifier: Oban.Notifiers.Postgres
+end

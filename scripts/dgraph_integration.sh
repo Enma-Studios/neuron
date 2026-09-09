@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-container_name="${NEURON_DGRAPH_CONTAINER:-neuron-dgraph}"
+container_name="${NEURON_DGRAPH_CONTAINER:-neuron-dgraph-test-$$}"
 image="${NEURON_DGRAPH_IMAGE:-docker.io/dgraph/standalone:v25.4.0}"
 
 cleanup() {
@@ -9,7 +9,6 @@ cleanup() {
 }
 
 trap cleanup EXIT
-cleanup
 
 podman run --detach \
   --name "$container_name" \

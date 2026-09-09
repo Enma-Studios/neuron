@@ -21,13 +21,18 @@ defmodule Neuron.DgraphIntegrationTest do
                connection: connection
              )
 
-    assert :ok = Neuron.Graph.upsert(%{"uid" => uid, "name" => "Neuron Integration #{nonce}"}, connection: connection)
+    assert :ok =
+             Neuron.Graph.upsert(%{"uid" => uid, "name" => "Neuron Integration #{nonce}"},
+               connection: connection
+             )
+
     assert {:ok, response} =
              Neuron.Graph.query(
                "query by_name($name: string) { by_name(func: eq(name, $name)) { uid name } }",
                %{"$name" => "Neuron Integration #{nonce}"},
                connection: connection
              )
+
     assert [%{"uid" => _, "name" => _}] = response["by_name"]
   end
 end
