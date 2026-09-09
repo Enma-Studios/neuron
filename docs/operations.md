@@ -23,7 +23,7 @@ environment. Never commit them to `config/*.exs` or `mise.local.toml`.
 
 ## Dgraph
 
-The application uses Dgraph's gRPC endpoint at `localhost:9080` by default.
+The application uses Dgraph's HTTP endpoint at `localhost:8080` by default.
 The repeatable local check is:
 
 ```sh
@@ -33,7 +33,8 @@ scripts/dgraph_integration.sh
 The script starts a disposable Dgraph v25.4.0 container, waits for health,
 enables Dgraph for the test environment, applies the schema, writes a fact,
 queries it, and removes the container. To keep Dgraph running for manual
-inspection, run Podman yourself and set `NEURON_DGRAPH_ENDPOINT` before
+inspection, run Podman yourself and set `NEURON_DGRAPH_ENDPOINT` and
+`NEURON_DGRAPH_TRANSPORT` before
 starting Neuron.
 
 When Dgraph is down, `Neuron.Dgraph` keeps the application alive with a nil

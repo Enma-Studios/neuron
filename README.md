@@ -407,7 +407,7 @@ Dgraph stores domain facts; execution state stays in Mnesia. Apply the
 versioned schema with a live Dlex connection:
 
 ```elixir
-{:ok, connection} = Dlex.start_link(hostname: "localhost", port: 9080)
+{:ok, connection} = Dlex.start_link(hostname: "localhost", port: 8080, transport: :http)
 Neuron.Graph.Schema.apply(connection)
 ```
 

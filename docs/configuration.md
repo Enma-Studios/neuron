@@ -24,7 +24,8 @@ Mnesia or Dgraph.
 | `ZAI_BASE_URL` | Z.AI base URL in releases | `https://api.z.ai/api/paas/v4` |
 | `BROWSER_USE_API_KEY` | Browser Use authorization | unset |
 | `CHROMIUM` | Chromium executable | first existing `/usr/bin/chromium`, `/snap/bin/chromium`, `/usr/bin/chromium-browser` |
-| `NEURON_DGRAPH_ENDPOINT` | Dgraph gRPC endpoint | `localhost:9080` |
+| `NEURON_DGRAPH_ENDPOINT` | Dgraph endpoint | `localhost:8080` |
+| `NEURON_DGRAPH_TRANSPORT` | Dgraph transport (`http` or `grpc`) | `http` |
 | `NEURON_DGRAPH_ENABLED` | Enable Dgraph | `true` in dev, `false` in tests |
 | `NEURON_DATA_DIR` | Production Mnesia directory | `data/neuron` |
 | `NEURON_BROWSER_POOL_SIZE` | Pinocchio pool size in releases | `4` |
@@ -33,10 +34,10 @@ Mnesia or Dgraph.
 | `NEURON_ENABLE_LOCAL_ML` | Fetch optional Nx/Bumblebee/EXLA dependencies | unset |
 | `NEURON_CAPTURE_PAYLOADS` | Include complete telemetry payloads | `false` |
 
-For a Podman Dgraph mapped to port 19080:
+The default local Dgraph HTTP API is `localhost:8080`. For a gRPC endpoint:
 
 ```sh
-NEURON_DGRAPH_ENDPOINT=localhost:19080 mix run -e 'IO.inspect(Neuron.Dgraph.connection())'
+NEURON_DGRAPH_ENDPOINT=localhost:9080 NEURON_DGRAPH_TRANSPORT=grpc mix run -e 'IO.inspect(Neuron.Dgraph.connection())'
 ```
 
 The main application keys are `storage`, `dgraph`, `model`, `browser`,

@@ -33,4 +33,5 @@ fi
 
 NEURON_DGRAPH_ENABLED=true \
 NEURON_DGRAPH_ENDPOINT="localhost:${NEURON_DGRAPH_GRPC_PORT:-9080}" \
+NEURON_DGRAPH_TRANSPORT=grpc \
   mix test --include integration test/neuron_dgraph_integration_test.exs

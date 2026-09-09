@@ -4,7 +4,8 @@ config :neuron,
   storage: [data_dir: "tmp/neuron_data/test"],
   dgraph: [
     enabled: System.get_env("NEURON_DGRAPH_ENABLED", "false") == "true",
-    endpoint: System.get_env("NEURON_DGRAPH_ENDPOINT", "localhost:9080")
+    endpoint: System.get_env("NEURON_DGRAPH_ENDPOINT", "localhost:8080"),
+    transport: String.to_atom(System.get_env("NEURON_DGRAPH_TRANSPORT", "http"))
   ],
   model: [provider: Neuron.Model.Stub],
   embeddings: [provider: Neuron.Embedding.Stub]
