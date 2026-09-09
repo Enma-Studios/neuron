@@ -13,7 +13,7 @@ config :neuron,
   limits: [max_runs: 32, max_agents_per_run: 16, max_steps: 200, max_delegation_depth: 4],
   prompts: [path: "priv/prompts"]
 
-config :neuron, telemetry: [capture_payloads: false]
+config :neuron, telemetry: [capture_payloads: false, log_path: "/tmp/neuron-run.log"]
 
 chromium =
   System.get_env("CHROMIUM") ||

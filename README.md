@@ -108,6 +108,7 @@ Useful runtime variables:
 | `BROWSER_USE_API_KEY` | Browser Use authorization | unset |
 | `NEURON_CAPTURE_PAYLOADS` | Include full payloads in telemetry | `false` |
 | `NEURON_BROWSER_POOL_SIZE` | Pinocchio browser pool size | `4` |
+| `NEURON_TELEMETRY_LOG` | Append correlated event lines to a file | `/tmp/neuron-run.log` in development |
 
 Development configuration lives in `config/config.exs` and `config/dev.exs`.
 Production secrets and paths are read in `config/runtime.exs`. Test
@@ -504,6 +505,11 @@ Attach handlers with standard Telemetry APIs:
   nil
 )
 ```
+
+In addition to attached handlers, the configured telemetry log receives every
+event as a line containing event name, measurements, and correlated metadata.
+Set `NEURON_TELEMETRY_LOG` (or `telemetry: [log_path: ...]`) for a different
+path. Payloads remain summarized unless payload capture is explicitly enabled.
 
 ## Tests and integration checks
 
