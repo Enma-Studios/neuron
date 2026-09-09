@@ -14,8 +14,8 @@ worker-only deployment or behind an HTTP/API layer.
 
 Deeper reference material is available in [the architecture guide](docs/architecture.md)
 and [the operations runbook](docs/operations.md). See the [library guide](docs/library.md)
-for the complete module and contract reference and the [configuration guide](docs/configuration.md)
-for all runtime keys.
+for the complete module and contract reference, the [configuration guide](docs/configuration.md)
+for all runtime keys, and the [migration guide](docs/migrations.md) for versioned schema changes.
 
 ## What runs in a Neuron job
 

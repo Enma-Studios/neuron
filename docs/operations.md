@@ -1,5 +1,8 @@
 # Operations runbook
 
+See the [migration guide](migrations.md) for the complete versioning model,
+deployment sequence, and instructions for adding a migration.
+
 ## Development boot
 
 ```sh
