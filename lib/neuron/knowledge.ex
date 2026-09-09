@@ -43,7 +43,18 @@ defmodule Neuron.Knowledge do
       ]
     }
 
-    with :ok <- Neuron.Graph.upsert(graph, opts), do: {:ok, snapshot_id}
+    [snapshot] = graph["documents"]
+
+    snapshot =
+      Map.put(
+        snapshot,
+        "observed_at",
+        DateTime.to_iso8601(document.published_at || document.fetched_at)
+      )
+
+    with :ok <- Neuron.Graph.insert_once(snapshot, opts),
+         :ok <- Neuron.Graph.upsert(Map.put(graph, "documents", [%{"uid" => snapshot_id}]), opts),
+         do: {:ok, snapshot_id}
   end
 
   def validate_claims(%{"claims" => claims}, document) when is_list(claims) do
@@ -67,6 +78,13 @@ defmodule Neuron.Knowledge do
   def validate_claims(_, _), do: {:error, :expected_claims_array}
 
   def ingest(claims, document, snapshot_id, opts) do
+    {:ok, %{"snapshots" => [snapshot]}} =
+      Neuron.Graph.query(
+        "query snapshot($id: string) { snapshots(func: eq(external_id, $id)) { observed_at } }",
+        %{"$id" => snapshot_id},
+        opts
+      )
+
     nodes =
       Enum.map(claims, fn claim ->
         entity = entity_id(claim.entity_type, claim.identity)
@@ -83,7 +101,7 @@ defmodule Neuron.Knowledge do
               "claim_value" => claim.value,
               "excerpt" => claim.excerpt,
               "url" => document.url,
-              "observed_at" => DateTime.to_iso8601(document.published_at || document.fetched_at),
+              "observed_at" => snapshot["observed_at"],
               "authority" => authority(claim, document),
               "assertion_kind" => "observed",
               "documents" => [%{"uid" => snapshot_id}],
@@ -143,16 +161,51 @@ defmodule Neuron.Knowledge do
         })
       )
 
-      Neuron.Graph.upsert(
-        %{
-          "uid" => record["uid"],
-          "knowledge_json" => Jason.encode!(facts),
-          "knowledge_text" => Enum.join(Map.values(facts), " "),
-          "current_claims" => refs
-        },
-        opts
-      )
+      text = Enum.join(Map.values(facts), " ")
+
+      with {:ok, context} <- employer_context(facts["employer"], opts),
+           {:ok, vector} <- Neuron.Embedding.provider().embed(text <> " " <> context, opts) do
+        projection = Map.take(facts, ~w(name description industry title email profile_url body))
+
+        projection =
+          Enum.reduce(~w(employer organization owner), projection, fn key, acc ->
+            case facts[key] do
+              nil ->
+                acc
+
+              domain ->
+                Map.put(acc, key, %{
+                  "uid" => entity_id("Organization", domain),
+                  "dgraph.type" => ["Organization", "Entity"],
+                  "domain" => domain(domain)
+                })
+            end
+          end)
+
+        Neuron.Graph.upsert(
+          Map.merge(projection, %{
+            "uid" => record["uid"],
+            "knowledge_json" => Jason.encode!(facts),
+            "knowledge_text" => text <> " " <> context,
+            "embedding" => vector,
+            "current_claims" => refs
+          }),
+          opts
+        )
+      end
     end
+  end
+
+  defp employer_context(nil, _opts), do: {:ok, ""}
+
+  defp employer_context(domain, opts) do
+    with {:ok, %{"records" => records}} <-
+           Neuron.Graph.query(
+             "query employer($domain: string) { records(func: eq(domain, $domain)) { knowledge_text } }",
+             %{"$domain" => domain(domain)},
+             opts
+           ),
+         do: {:ok, Enum.map_join(records, " ", &(&1["knowledge_text"] || ""))}
   end
 
   def resolve(claims) do

@@ -1,7 +1,7 @@
 defmodule Neuron.Graph.Schema do
   @moduledoc "Versioned Dgraph predicates for the shared knowledge graph."
 
-  @version 5
+  @version 6
 
   def version, do: @version
 
@@ -264,11 +264,18 @@ defmodule Neuron.Graph.Schema do
     extraction_version: int .
     excerpt: string @index(fulltext) .
     confidence: float @index(float) .
-    observed_at: datetime .
+    observed_at: datetime @index(hour) .
     predicate: string .
     embedding: float32vector @index(hnsw(metric:"cosine")) .
-    fetched_at: datetime .
+    fetched_at: datetime @index(hour) .
     snapshot: uid @reverse .
+    documents: [uid] @reverse .
+    claim_value: string @index(fulltext) .
+    authority: float @index(float) .
+    assertion_kind: string @index(exact) .
+    current_claims: [uid] @reverse .
+    knowledge_json: string .
+    knowledge_text: string @index(fulltext) .
     """
   end
 

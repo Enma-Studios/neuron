@@ -11,6 +11,26 @@ defmodule Neuron.Graph do
     )
   end
 
+  @doc "Insert immutable evidence once, preserving its original observation time on replay."
+  def insert_once(%{"uid" => identity} = facts, opts \\ []) do
+    connection = Keyword.get_lazy(opts, :connection, &Neuron.Dgraph.connection/0)
+    {query, payload} = upsert_request(facts)
+    ids = facts |> identify() |> blank_ids() |> Enum.uniq() |> Enum.sort()
+    variable = "v#{Enum.find_index(ids, &(&1 == identity))}"
+
+    Neuron.Telemetry.span([:graph, :insert_once], Neuron.Telemetry.trace_metadata(opts), fn ->
+      case Dlex.mutate(
+             connection,
+             %{query: query},
+             %{set: encode_vectors(payload), cond: "@if(eq(len(#{variable}), 0))"},
+             []
+           ) do
+        {:ok, _} -> :ok
+        error -> error
+      end
+    end)
+  end
+
   defp do_upsert(facts, opts) do
     connection = Keyword.get_lazy(opts, :connection, &Neuron.Dgraph.connection/0)
     {query, payload} = upsert_request(facts)
