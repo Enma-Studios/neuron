@@ -103,6 +103,11 @@ defmodule Neuron.Browser.Fleet do
   defp run_slot(slot, tasks, handles, pages, adapter, opts) do
     handle = Enum.at(handles, div(slot, pages))
 
+    # Tab creation serializes inside the session's connection process and
+    # blocks it while awaiting each CDP response, so concurrent creates
+    # starve each other. Stagger them within each session.
+    Process.sleep(rem(slot, pages) * 300)
+
     Enum.map(tasks, fn task ->
       Neuron.Telemetry.emit(
         [:browser, :page],
@@ -138,7 +143,7 @@ defmodule Neuron.Browser.Fleet.CDP do
   events, which any concurrent tab on the same session can trigger.
   """
 
-  @poll_interval 250
+  @poll_interval 300
   @minimal_source 256
 
   def run_page(handle, task, opts) do
@@ -163,9 +168,11 @@ defmodule Neuron.Browser.Fleet.CDP do
   end
 
   @doc """
-  Poll until the page reports the target host and its source stops
+  Poll until the page reports the target host and its rendered size stops
   changing. Load events cannot be used here: any concurrent tab on the
-  same session can trigger them. A page that never settles is an error,
+  same session can trigger them. Probes ship an integer, never the
+  document — the connection process serializes every tab's traffic, and
+  full-source polls starve it. A page that never settles is an error,
   not a partial result.
   """
   @spec wait_ready(term(), String.t(), timeout()) :: :ok | {:error, :page_not_ready}
@@ -175,7 +182,7 @@ defmodule Neuron.Browser.Fleet.CDP do
   end
 
   defp poll_ready(page, url, deadline, previous_size) do
-    size = page |> Pinocchio.Browser.page_source() |> byte_size()
+    size = source_size(page)
     expected_host = host_of(url)
 
     ready? =
@@ -193,6 +200,13 @@ defmodule Neuron.Browser.Fleet.CDP do
       true ->
         Process.sleep(@poll_interval)
         poll_ready(page, url, deadline, size)
+    end
+  end
+
+  defp source_size(page) do
+    case Pinocchio.Browser.execute_script(page, "document.documentElement.outerHTML.length") do
+      {:ok, %{"result" => %{"value" => size}}} when is_integer(size) -> size
+      _ -> 0
     end
   end
 
