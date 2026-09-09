@@ -11,8 +11,6 @@ defmodule Neuron.Telemetry do
       ])
     end
 
-    write_log(event, measurements, metadata)
-
     :ok
   end
 
@@ -85,23 +83,5 @@ defmodule Neuron.Telemetry do
   end
 
   defp normalize(metadata), do: Map.new(metadata)
-
-  defp write_log(event, measurements, metadata) do
-    path =
-      Application.get_env(:neuron, :telemetry, [])[:log_path] ||
-        System.get_env("NEURON_TELEMETRY_LOG")
-
-    if is_binary(path) and path != "" do
-      line =
-        "#{DateTime.utc_now()} event=#{inspect(event)} measurements=#{inspect(measurements)} metadata=#{inspect(metadata, limit: :infinity)}\n"
-
-      try do
-        File.write(path, line, [:append, :binary])
-      rescue
-        _ -> :ok
-      end
-    end
-  end
-
   defp trace_id, do: :crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower)
 end
