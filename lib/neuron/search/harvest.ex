@@ -44,12 +44,17 @@ defmodule Neuron.Search.Harvest do
 
   @doc "Read one transcript with the model and validate the selection."
   def harvest(transcript, opts) do
+    content =
+      if transcript.markdown == "",
+        do: transcript.text,
+        else: transcript.markdown
+
     assigns = %{
       engine: engine_label(transcript.engine),
       query: transcript.query,
       seller: Keyword.get(opts, :seller_domain, ""),
       url: transcript.url,
-      text: transcript.text,
+      content: content,
       links: format_links(transcript.links)
     }
 

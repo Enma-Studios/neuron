@@ -5,6 +5,7 @@ defmodule Neuron.Search.HarvestTest do
     %{
       url: "https://social.example/search?keywords=acme",
       title: "acme — search",
+      markdown: "## Results\n\n- [Jane Founder — CTO Acme](https://social.example/in/jane)",
       text: "Jane Founder CTO at Acme. Mark runs ops.",
       links: [
         %{href: "https://social.example/in/jane", label: "Jane Founder — CTO Acme"},

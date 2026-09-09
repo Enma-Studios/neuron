@@ -3,6 +3,6 @@ Return {"results":[{"title":"<who or what this is>","url":"<exact transcript URL
 Search: <%= @engine %> for "<%= @query %>"
 Seller domain: <%= @seller %>
 Transcript URL: <%= @url %>
-Transcript text: <%= @text %>
+Transcript content (Markdown of the page's main section): <%= @content %>
 Transcript links:
 <%= @links %>

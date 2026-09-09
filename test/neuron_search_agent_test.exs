@@ -5,7 +5,8 @@ defmodule Neuron.Search.AgentTest do
     raw = %{
       "url" => "https://social.example/search?keywords=acme",
       "title" => "acme — search",
-      "text" => "Jane Founder\nCTO at Acme\n",
+      "markdown" => "## Results\n\n- [Jane Founder — CTO Acme](https://social.example/in/jane)",
+      "text" => "Jane Founder\nCTO at Acme. Mark runs ops.",
       "links" => [
         %{"href" => "https://social.example/in/jane", "label" => "Jane Founder"},
         %{"href" => "https://social.example/in/jane", "label" => "duplicate"},
@@ -26,7 +27,8 @@ defmodule Neuron.Search.AgentTest do
 
     assert transcript.url == "https://social.example/search?keywords=acme"
     assert transcript.title == "acme — search"
-    assert transcript.text == "Jane Founder\nCTO at Acme"
+    assert transcript.markdown =~ "[Jane Founder — CTO Acme](https://social.example/in/jane)"
+    assert transcript.text == "Jane Founder\nCTO at Acme. Mark runs ops."
 
     assert transcript.links == [
              %{href: "https://social.example/in/jane", label: "Jane Founder"},
@@ -37,23 +39,44 @@ defmodule Neuron.Search.AgentTest do
     assert transcript.query == "acme CTO"
   end
 
-  test "caps transcript text length and rejects non-map extractions" do
+  test "caps transcript content length and rejects non-map extractions" do
     long_text = String.duplicate("a", 20_000)
     task = %{id: {:stub, "q"}, engine: nil, query: "q", url: "https://x.example"}
 
-    transcript = Neuron.Search.Agent.normalize(%{"url" => nil, "text" => long_text}, task)
+    transcript = Neuron.Search.Agent.normalize(%{"url" => nil, "markdown" => long_text}, task)
     assert transcript.url == "https://x.example"
-    assert String.length(transcript.text) == 16_000
+    assert String.length(transcript.markdown) == 16_000
+    assert transcript.text == ""
 
     assert {:error, :invalid_transcript} = Neuron.Search.Agent.normalize("junk", task)
   end
+end
 
-  test "extraction script reads location, title, body text, and links" do
-    script = Neuron.Search.Agent.extraction_script()
+defmodule Neuron.Browser.ScriptingTest do
+  use ExUnit.Case, async: true
 
+  test "ships a bundled Turndown build" do
+    source = Neuron.Browser.Scripting.turndown_source()
+    assert source =~ "TurndownService"
+    assert byte_size(source) > 10_000
+  end
+
+  test "extraction script scopes to the main section and converts it" do
+    script = Neuron.Browser.Scripting.extraction_script()
+
+    assert script =~ ~s|[role="main"]|
+    assert script =~ ~s|[data-testid="primaryColumn"]|
+    assert script =~ "TurndownService"
+    assert script =~ "cloneNode"
     assert script =~ "location.href"
-    assert script =~ "document.title"
     assert script =~ "innerText"
     assert script =~ "querySelectorAll('a[href]')"
+  end
+
+  test "flags interaction-heavy hosts" do
+    assert Neuron.Browser.Scripting.rich_host?("https://www.linkedin.com/in/jane")
+    assert Neuron.Browser.Scripting.rich_host?("https://x.com/search?q=acme")
+    refute Neuron.Browser.Scripting.rich_host?("https://acme.example/team")
+    refute Neuron.Browser.Scripting.rich_host?("garbage")
   end
 end

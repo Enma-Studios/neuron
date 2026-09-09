@@ -140,6 +140,7 @@ defmodule Neuron.SearchTest.TranscriptAgent do
      %{
        url: task.url,
        title: "Search",
+       markdown: "## Results\n\n- [Team](https://#{domain}/team)",
        text: "Results for #{task.query}",
        links: [%{href: "https://#{domain}/team", label: "Team"}],
        engine: task.engine,
