@@ -3,6 +3,11 @@ import Config
 if config_env() == :prod do
   config :neuron,
     storage: [data_dir: System.get_env("NEURON_DATA_DIR", "data/neuron")],
+    dgraph: [
+      endpoint: System.get_env("NEURON_DGRAPH_ENDPOINT", "localhost:8080"),
+      transport: String.to_atom(System.get_env("NEURON_DGRAPH_TRANSPORT", "http")),
+      enabled: System.get_env("NEURON_DGRAPH_ENABLED", "true") == "true"
+    ],
     model: [
       api_key: System.get_env("ZAI_API_KEY"),
       base_url: System.get_env("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4"),
