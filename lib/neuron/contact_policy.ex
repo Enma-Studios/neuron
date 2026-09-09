@@ -2,7 +2,7 @@ defmodule Neuron.ContactPolicy do
   @moduledoc "Evidence rules and soft source preferences for contact selection."
 
   @preferred_hosts ~w(
-    linkedin.com www.linkedin.com github.com www.github.com gitlab.com
+    linkedin.com www.linkedin.com gitlab.com
     x.com twitter.com www.twitter.com facebook.com www.facebook.com
     instagram.com www.instagram.com youtube.com www.youtube.com
     crunchbase.com www.crunchbase.com wellfound.com angel.co clutch.co g2.com
@@ -11,6 +11,13 @@ defmodule Neuron.ContactPolicy do
   )
   @excluded_markers ["distinct company", "distinct organization", "branch office", "franchise"]
   @personal_hosts ~w(gmail.com yahoo.com outlook.com hotmail.com proton.me protonmail.com icloud.com)
+
+  def prospect_source?(url) when is_binary(url) do
+    host = String.downcase(URI.parse(url).host || "")
+    host != "github.com" and not String.ends_with?(host, ".github.com")
+  end
+
+  def prospect_source?(_), do: false
 
   def eligible?(person, target_domain, opts \\ []) when is_map(person) do
     name = text(person["name"] || person[:name])
@@ -48,7 +55,7 @@ defmodule Neuron.ContactPolicy do
 
   defp plausible_source?(_target_domain, profile_url, evidence_urls) do
     urls = [profile_url | evidence_urls]
-    Enum.any?(urls, &(is_binary(&1) and String.starts_with?(&1, "http")))
+    Enum.any?(urls, &(is_binary(&1) and String.starts_with?(&1, "http") and prospect_source?(&1)))
   end
 
   defp only_personal_sources?(profile_url, evidence_urls) do

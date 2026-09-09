@@ -140,6 +140,7 @@ defmodule Neuron.Research do
       end)
       |> Kernel.++(site_seeds(domain))
       |> Enum.filter(&http_url?(&1[:url]))
+      |> Enum.filter(&Neuron.ContactPolicy.prospect_source?(&1[:url]))
       |> Enum.uniq_by(& &1.url)
       |> Enum.sort_by(&{-source_priority(&1.url, domain), &1.url})
       |> Enum.take(Keyword.get(opts, :max_sources, 8))
@@ -724,7 +725,7 @@ defmodule Neuron.Research do
     cond do
       host == domain or String.ends_with?(host, ".#{domain}") -> 100
       host in ["linkedin.com", "www.linkedin.com"] -> 90
-      host in ["github.com", "www.github.com"] -> 80
+      host in ["x.com", "www.x.com", "twitter.com", "www.twitter.com"] -> 80
       true -> 10
     end
   end
