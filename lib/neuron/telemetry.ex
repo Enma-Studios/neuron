@@ -3,13 +3,7 @@ defmodule Neuron.Telemetry do
   @compile {:no_warn_undefined, :telemetry}
 
   def emit(event, metadata \\ %{}, measurements \\ %{}) do
-    if Code.ensure_loaded?(:telemetry) do
-      apply(:telemetry, :execute, [
-        [:neuron | List.wrap(event)],
-        measurements,
-        normalize(metadata)
-      ])
-    end
+    :telemetry.execute([:neuron | List.wrap(event)], measurements, normalize(metadata))
 
     :ok
   end
@@ -72,11 +66,8 @@ defmodule Neuron.Telemetry do
   end
 
   def transcript(opts, event, payload) do
-    path = Keyword.get(opts, :session_transcript) || System.get_env("NEURON_SESSION_TRANSCRIPT")
-
-    if is_binary(path) and path != "" do
-      line = "#{DateTime.utc_now()} #{event} #{inspect(payload, limit: :infinity)}\n"
-      File.write!(path, line, [:append, :binary])
+    if run_id = opts[:run_id] do
+      Neuron.Storage.next_event(run_id, event, payload, trace_metadata(opts))
     end
 
     :ok

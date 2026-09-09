@@ -14,7 +14,15 @@ defmodule Neuron.Prompt do
 
     Neuron.Telemetry.span([:prompt, :render], metadata, fn ->
       try do
-        {:ok, EEx.eval_string(template, assigns: Map.to_list(assigns))}
+        prompt = EEx.eval_string(template, assigns: Map.to_list(assigns))
+
+        Neuron.Telemetry.transcript(opts, "prompt.rendered", %{
+          template: opts[:template],
+          version: version,
+          prompt: prompt
+        })
+
+        {:ok, prompt}
       rescue
         error -> {:error, {:invalid_prompt, Exception.message(error)}}
       end
@@ -22,7 +30,12 @@ defmodule Neuron.Prompt do
   end
 
   def render_file(name, assigns, opts \\ []) do
-    path = Path.join(Application.get_env(:neuron, :prompts, [])[:path] || "priv/prompts", name)
+    path =
+      Path.join(
+        Application.get_env(:neuron, :prompts, [])[:path] ||
+          Application.app_dir(:neuron, "priv/prompts"),
+        name
+      )
 
     case File.read(path) do
       {:ok, template} -> render(template, assigns, Keyword.put_new(opts, :template, name))

@@ -4,12 +4,12 @@ defmodule Neuron.Storage do
   alias Neuron.Persistence, as: P
   alias Neuron.FSM.Event
 
-  def next_event(id, type, payload, _metadata \\ %{}) do
+  def next_event(id, type, payload, metadata \\ %{}) do
     P.repo().insert!(%Event{
       machine_id: id,
       version: 0,
       event: to_string(type),
-      payload: P.encode(payload)
+      payload: P.encode(%{data: payload, metadata: metadata})
     })
   end
 
