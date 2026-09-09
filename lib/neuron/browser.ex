@@ -34,11 +34,11 @@ defmodule Neuron.Browser do
         {:ok, Map.put(snapshot, :provider, provider)}
 
       {:error, reason} ->
-        Neuron.Telemetry.emit([:browser, :blocked], %{
-          provider: provider,
-          url: url,
-          reason: inspect(reason)
-        })
+        Neuron.Telemetry.emit(
+          [:browser, :blocked],
+          Neuron.Telemetry.trace_metadata(opts)
+          |> Map.merge(%{provider: provider, url: url, reason: inspect(reason)})
+        )
 
         attempt(rest, url, opts, [{provider, reason} | errors])
     end

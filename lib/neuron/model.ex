@@ -34,10 +34,11 @@ defmodule Neuron.Model.ZAI do
 
       headers = [{"authorization", "Bearer #{api_key}"}, {"content-type", "application/json"}]
 
-      Neuron.Telemetry.emit([:model, :request], %{
-        model: body.model,
-        prompt: Neuron.Telemetry.summarize(messages)
-      })
+      Neuron.Telemetry.emit(
+        [:model, :request],
+        Neuron.Telemetry.trace_metadata(opts)
+        |> Map.merge(%{model: body.model, prompt: Neuron.Telemetry.summarize(messages)})
+      )
 
       case apply(Req, :post, [
              url,
@@ -46,11 +47,15 @@ defmodule Neuron.Model.ZAI do
         {:ok, %{status: status, body: response}} when status in 200..299 ->
           message = get_in(response, ["choices", Access.at(0), "message"]) || %{}
 
-          Neuron.Telemetry.emit([:model, :decision], %{
-            model: body.model,
-            reasoning: Neuron.Telemetry.summarize(message["reasoning_content"]),
-            tool_calls: message["tool_calls"] || []
-          })
+          Neuron.Telemetry.emit(
+            [:model, :decision],
+            Neuron.Telemetry.trace_metadata(opts)
+            |> Map.merge(%{
+              model: body.model,
+              reasoning: Neuron.Telemetry.summarize(message["reasoning_content"]),
+              tool_calls: message["tool_calls"] || []
+            })
+          )
 
           {:ok, response}
 
@@ -99,10 +104,14 @@ defmodule Neuron.Model.ZAI do
                ]
              ]) do
           {:ok, %{status: status, body: response}} when status in 200..299 ->
-            Neuron.Telemetry.emit([:model, :web_search_results], %{
-              query: Neuron.Telemetry.summarize(query),
-              count: length(response["search_result"] || [])
-            })
+            Neuron.Telemetry.emit(
+              [:model, :web_search_results],
+              Neuron.Telemetry.trace_metadata(opts)
+              |> Map.merge(%{
+                query: Neuron.Telemetry.summarize(query),
+                count: length(response["search_result"] || [])
+              })
+            )
 
             {:ok, response}
 

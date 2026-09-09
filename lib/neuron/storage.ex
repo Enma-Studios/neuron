@@ -40,7 +40,7 @@ defmodule Neuron.Storage do
   def put_operation(operation, metadata \\ %{}), do: write(:neuron_operation, operation, metadata)
   def put_outbox(entry, metadata \\ %{}), do: write(:neuron_outbox, entry, metadata)
 
-  def update_outbox(id, status, attempts \\ nil) do
+  def update_outbox(id, status, attempts \\ nil, metadata \\ %{}) do
     transaction(
       fn ->
         case :mnesia.read(:neuron_outbox, id) do
@@ -56,7 +56,7 @@ defmodule Neuron.Storage do
             :not_found
         end
       end,
-      %{task_id: "outbox:update", operation_id: id}
+      Map.merge(%{task_id: "outbox:update", operation_id: id}, metadata)
     )
   end
 

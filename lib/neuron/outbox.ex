@@ -39,29 +39,40 @@ defmodule Neuron.Outbox do
   end
 
   defp publish({:neuron_outbox, id, run_id, kind, payload, :pending, attempts, _updated}) do
-    Neuron.Telemetry.emit([:outbox, :publish], %{
-      run_id: run_id,
-      operation_id: id,
-      attempt: attempts + 1,
-      kind: kind,
-      payload: Neuron.Telemetry.summarize(payload)
-    })
+    metadata =
+      Neuron.Telemetry.trace_metadata(%{
+        run_id: run_id,
+        operation_id: id,
+        task_id: "outbox:publish",
+        attempt: attempts + 1
+      })
+
+    Neuron.Telemetry.emit(
+      [:outbox, :publish],
+      Map.merge(metadata, %{kind: kind, payload: Neuron.Telemetry.summarize(payload)})
+    )
 
     result =
-      Neuron.Graph.upsert(%{
-        "uid" => "_:#{id}",
-        "type" => to_string(kind),
-        "run_id" => run_id,
-        "payload" => inspect(payload)
-      })
+      Neuron.Graph.upsert(
+        %{
+          "uid" => "_:#{id}",
+          "type" => to_string(kind),
+          "run_id" => run_id,
+          "payload" => inspect(payload)
+        },
+        run_id: run_id,
+        operation_id: id,
+        task_id: "outbox:publish",
+        attempt: attempts + 1
+      )
 
     case result do
       :ok ->
-        _ = Neuron.Storage.update_outbox(id, :delivered, attempts + 1)
+        _ = Neuron.Storage.update_outbox(id, :delivered, attempts + 1, metadata)
 
       {:error, reason} ->
         Logger.debug("domain publication pending #{id}: #{inspect(reason)}")
-        _ = Neuron.Storage.update_outbox(id, :pending, attempts + 1)
+        _ = Neuron.Storage.update_outbox(id, :pending, attempts + 1, metadata)
     end
   end
 end
