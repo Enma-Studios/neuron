@@ -456,6 +456,14 @@ The default Dgraph connection remains HTTP at `localhost:8080`. Set
 `NEURON_DGRAPH_ENDPOINT` and `NEURON_DGRAPH_TRANSPORT` for a release, or pass
 the endpoint and transport to the Dgraph migration task.
 
+Migration versions are append-only and recorded in the durable
+`neuron_migration` table. Each task applies pending versions in ascending
+order, then records the version and name. The Dgraph task also reapplies the
+current schema when all versions are already recorded, which reconciles a
+fresh Dgraph instance with the local migration ledger. The current Mnesia
+baseline is v1; the current graph schema is v4. Future storage or predicate
+changes should add the next entry to `Neuron.Migrations`.
+
 `GraphSearch.hybrid/3` currently returns the lexical and semantic result sets
 with the declared fusion strategy; ranking fusion can be replaced without
 changing callers.

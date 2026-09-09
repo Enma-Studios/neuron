@@ -76,6 +76,15 @@ mix neuron.dgraph.migrate
 mix neuron.dgraph.migrate --endpoint localhost:9080 --transport grpc
 ```
 
+Migration execution is versioned. Each successful version is written to the
+`neuron_migration` Mnesia table, so rerunning a task applies pending versions
+and reconciles the current Dgraph schema. Inspect the applied records from IEx:
+
+```elixir
+Neuron.Storage.migration_status()
+Neuron.Storage.migration_status(:dgraph)
+```
+
 ## Browser health
 
 Check the executable selected by Neuron:

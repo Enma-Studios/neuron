@@ -52,6 +52,13 @@ Both migrations are safe to repeat. The Mnesia task accepts `--data-dir` and
 `--backend mnesia|rocksdb`; the Dgraph task accepts `--endpoint` and
 `--transport http|grpc`.
 
+Applied versions are recorded in Mnesia's `neuron_migration` table with the
+backend, version, migration name, and timestamp. Migration definitions are
+append-only in `Neuron.Migrations`; the current Mnesia version is 1 and the
+current Dgraph schema version is 4. The Dgraph task reapplies the current
+schema when the ledger is already current, allowing schema reconciliation
+after a Dgraph reset.
+
 The main application keys are `storage`, `dgraph`, `model`, `browser`,
 `limits`, `recovery`, `prompts`, `embeddings`, and `telemetry`. Per-call
 options can override `run_id`, `trace_id`, `task_id`, `operation_id`,
