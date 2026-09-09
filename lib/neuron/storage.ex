@@ -2,15 +2,13 @@ defmodule Neuron.Storage do
   @moduledoc """
   Durable execution storage.
 
-  Agent execution state lives in Mnesia. When `mnesia_rocksdb` is available,
-  tables use its `rocksdb_copies` backend; otherwise the configured Mnesia
-  backend is used. Domain facts are deliberately published elsewhere.
+  Agent execution state lives in Mnesia. The default configuration requires
+  `mnesia_rocksdb` and uses its `rocksdb_copies` backend. Domain facts are
+  deliberately published elsewhere.
   """
 
   use GenServer
   @compile {:no_warn_undefined, :mnesia}
-
-  require Logger
 
   @tables [
     {:neuron_run, [:id, :profile, :input, :status, :inserted_at, :updated_at, :result, :error]},
@@ -217,7 +215,11 @@ defmodule Neuron.Storage do
 
   defp register_rocksdb(config) when is_list(config) do
     if config[:backend] == :rocksdb do
-      register_rocksdb_backend()
+      if Code.ensure_loaded?(:mnesia_rocksdb) do
+        register_rocksdb_backend()
+      else
+        {:error, :mnesia_rocksdb_unavailable}
+      end
     else
       :ok
     end
@@ -226,23 +228,16 @@ defmodule Neuron.Storage do
   defp register_rocksdb(_), do: :ok
 
   defp register_rocksdb_backend do
-    if Code.ensure_loaded?(:mnesia_rocksdb) do
-      case apply(:mnesia_rocksdb, :register, []) do
-        {:ok, _} -> :ok
-        {:error, {:already_registered, _}} -> :ok
-        {:error, reason} -> {:error, {:rocksdb_register, reason}}
-      end
-    else
-      Logger.warning("mnesia_rocksdb is unavailable; using disc_copies")
-      :ok
+    case apply(:mnesia_rocksdb, :register, []) do
+      {:ok, _} -> :ok
+      {:error, {:already_registered, _}} -> :ok
+      {:error, reason} -> {:error, {:rocksdb_register, reason}}
     end
   end
 
   defp create_tables(config) do
     copy_key =
-      if config[:backend] == :rocksdb and Code.ensure_loaded?(:mnesia_rocksdb),
-        do: :rocksdb_copies,
-        else: :disc_copies
+      if config[:backend] == :rocksdb, do: :rocksdb_copies, else: :disc_copies
 
     result =
       Enum.reduce_while(@tables, :ok, fn {table, attributes}, :ok ->
