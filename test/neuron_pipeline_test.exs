@@ -34,7 +34,9 @@ defmodule Neuron.PipelineTest do
             receive do
               :finish -> :ok
             end
-          end, max_concurrency: 1)
+          end,
+          max_concurrency: 1
+        )
       end)
 
     assert_receive {:mapper, mapper}, 1_000

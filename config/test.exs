@@ -9,7 +9,7 @@ config :neuron,
   model: [provider: Neuron.Model.Stub],
   embeddings: [provider: Neuron.Embedding.Stub]
 
-config :neuron, Neuron.Repo, database: "tmp/neuron_test.db"
+config :neuron, Neuron.Repo, database: "neuron_test.db"
 config :neuron, :oban, testing: :manual, queues: false, plugins: false
 
 config :pinocchio, browser: [executable: nil, endpoint: nil, provider: nil]
