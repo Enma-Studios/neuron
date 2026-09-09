@@ -27,7 +27,8 @@ defmodule Neuron.MixProject do
       {:dlex, github: "Enma-Studios/dlex", branch: "master", optional: true},
       {:pinocchio, github: "Enma-Studios/pinocchio", branch: "main", optional: true},
       {:htmd, "~> 0.2", optional: true},
-      {:mnesia_rocksdb, github: "aeternity/mnesia_rocksdb", branch: "master", optional: true},
+      {:mnesia_rocksdb,
+       github: "aeternity/mnesia_rocksdb", branch: "master", manager: :rebar3, optional: true},
       {:nx, "~> 0.9", optional: true},
       {:bumblebee, "~> 0.7", optional: true},
       {:exla, "~> 0.9", optional: true}

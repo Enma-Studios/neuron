@@ -26,6 +26,7 @@ defmodule Neuron.Graph.Schema do
   end
 
   def apply(connection \\ nil) do
+    Neuron.Telemetry.emit([:graph, :schema], %{version: @version})
     conn = connection || Application.get_env(:neuron, :dgraph, [])[:connection]
 
     if conn && Code.ensure_loaded?(Dlex) do
