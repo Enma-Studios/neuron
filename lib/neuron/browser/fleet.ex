@@ -202,7 +202,12 @@ defmodule Neuron.Browser.Fleet.CDP do
     end
   end
 
-  defp wait_ready(page, url, timeout) do
+  @doc """
+  Poll until the page reports the target host and its source stops
+  changing. Load events cannot be used here: any concurrent tab on the
+  same session can trigger them.
+  """
+  def wait_ready(page, url, timeout) do
     deadline = System.monotonic_time(:millisecond) + timeout
     poll_ready(page, url, deadline, nil)
   end
