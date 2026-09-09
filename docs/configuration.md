@@ -24,8 +24,8 @@ Mnesia or Dgraph.
 | `ZAI_BASE_URL` | Z.AI base URL in releases | `https://api.z.ai/api/paas/v4` |
 | `BROWSER_USE_API_KEY` | Browser Use authorization | unset |
 | `CHROMIUM` | Chromium executable | first existing `/usr/bin/chromium`, `/snap/bin/chromium`, `/usr/bin/chromium-browser` |
-| `NEURON_DGRAPH_ENDPOINT` | Dgraph endpoint | `localhost:8080` |
-| `NEURON_DGRAPH_TRANSPORT` | Dgraph transport (`http` or `grpc`) | `http` |
+| `NEURON_DGRAPH_ENDPOINT` | Dgraph endpoint | `localhost:9080` |
+| `NEURON_DGRAPH_TRANSPORT` | Dgraph transport (`http` or `grpc`) | `grpc` |
 | `NEURON_DGRAPH_ENABLED` | Enable Dgraph | `true` in dev, `false` in tests |
 | `NEURON_DATA_DIR` | Production Mnesia directory | `data/neuron` |
 | `NEURON_BROWSER_POOL_SIZE` | Pinocchio pool size in releases | `4` |
@@ -34,10 +34,16 @@ Mnesia or Dgraph.
 | `NEURON_ENABLE_LOCAL_ML` | Fetch optional Nx/Bumblebee/EXLA dependencies | unset |
 | `NEURON_CAPTURE_PAYLOADS` | Include complete telemetry payloads | `false` |
 
-The default local Dgraph HTTP API is `localhost:8080`. For a gRPC endpoint:
+The default local Dgraph gRPC endpoint is `localhost:9080`:
 
 ```sh
 NEURON_DGRAPH_ENDPOINT=localhost:9080 NEURON_DGRAPH_TRANSPORT=grpc mix run -e 'IO.inspect(Neuron.Dgraph.connection())'
+```
+
+Use the HTTP endpoint explicitly when needed:
+
+```sh
+NEURON_DGRAPH_ENDPOINT=localhost:8080 NEURON_DGRAPH_TRANSPORT=http mix run -e 'IO.inspect(Neuron.Dgraph.connection())'
 ```
 
 Apply the durable schemas with Mix tasks:

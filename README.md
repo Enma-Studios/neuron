@@ -452,9 +452,10 @@ mix neuron.dgraph.migrate
 mix neuron.dgraph.migrate --endpoint localhost:9080 --transport grpc
 ```
 
-The default Dgraph connection remains HTTP at `localhost:8080`. Set
-`NEURON_DGRAPH_ENDPOINT` and `NEURON_DGRAPH_TRANSPORT` for a release, or pass
-the endpoint and transport to the Dgraph migration task.
+The default Dgraph connection uses gRPC at `localhost:9080`. To use Dgraph's
+HTTP API instead, set `NEURON_DGRAPH_ENDPOINT=localhost:8080` and
+`NEURON_DGRAPH_TRANSPORT=http`. Pass the endpoint and transport to the Dgraph
+migration task when overriding a release configuration.
 
 Migration versions are append-only and recorded in the durable
 `neuron_migration` table. Each task applies pending versions in ascending

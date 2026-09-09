@@ -23,7 +23,7 @@ environment. Never commit them to `config/*.exs` or `mise.local.toml`.
 
 ## Dgraph
 
-The application uses Dgraph's HTTP endpoint at `localhost:8080` by default.
+The application uses Dgraph's gRPC endpoint at `localhost:9080` by default.
 The repeatable local check is:
 
 ```sh
@@ -67,13 +67,14 @@ upgrading Neuron:
 mix neuron.mnesia.migrate --data-dir /var/lib/neuron
 ```
 
-Apply the Dgraph predicates and indexes separately. The local HTTP endpoint is
-`localhost:8080`; use the gRPC listener on `localhost:9080` when selecting the
-gRPC transport:
+Apply the Dgraph predicates and indexes separately. The default gRPC listener
+is `localhost:9080`; select the HTTP listener at `localhost:8080` explicitly
+with `--transport http`:
 
 ```sh
 mix neuron.dgraph.migrate
 mix neuron.dgraph.migrate --endpoint localhost:9080 --transport grpc
+mix neuron.dgraph.migrate --endpoint localhost:8080 --transport http
 ```
 
 Migration execution is versioned. Each successful version is written to the
