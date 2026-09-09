@@ -15,4 +15,6 @@ config :neuron,
 
 config :neuron, telemetry: [capture_payloads: false]
 
+config :mnesia, dir: String.to_charlist("priv/neuron_data")
+
 import_config "#{config_env()}.exs"

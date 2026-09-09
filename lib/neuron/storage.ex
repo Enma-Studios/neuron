@@ -8,6 +8,7 @@ defmodule Neuron.Storage do
   """
 
   use GenServer
+  @compile {:no_warn_undefined, :mnesia}
 
   require Logger
 

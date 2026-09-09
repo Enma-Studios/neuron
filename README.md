@@ -19,10 +19,20 @@ Local Chromium is the preferred browser. Browser Use is selected after a
 recorded local blockage. Configure both providers and the Dgraph endpoint in
 `config/runtime.exs` or application configuration.
 
-The default execution store requests the `mnesia_rocksdb` backend. If that
-native dependency is unavailable, startup logs an explicit warning and uses
-Mnesia `disc_copies`; production deployments should provision the RocksDB NIF
-and a persistent `NEURON_DATA_DIR`.
+Pinocchio is a private dependency. When GitHub credentials are available,
+resolve it with `NEURON_FETCH_PINOCCHIO=true mix deps.get`; without that flag,
+Neuron compiles and the local browser adapter reports Pinocchio as unavailable
+until the dependency is installed.
+
+The default execution store requests the `mnesia_rocksdb` backend. Enable its
+native dependency on a C++ build host with `NEURON_ENABLE_ROCKSDB=true mix
+deps.get`; otherwise startup logs an explicit warning and uses Mnesia
+`disc_copies`. Production deployments should provision the RocksDB NIF and a
+persistent `NEURON_DATA_DIR`.
+
+Enable the local Bumblebee/Nx embedding stack with
+`NEURON_ENABLE_LOCAL_ML=true mix deps.get`; it requires a C++ toolchain for
+EXLA. The embedding contract remains available without that optional stack.
 
 ## Public API
 
