@@ -7,13 +7,75 @@ defmodule Neuron.Search do
   end
 end
 
+defmodule Neuron.Search.Engine do
+  @moduledoc """
+  Contract shared by browser-rendered search engines and native social
+  platform searches. Engines normalize the query with `keywords/1`, render
+  `search_url/1` in a browser page, and extract results with `parse/1`.
+  """
+
+  @type result :: %{title: String.t(), url: String.t(), snippet: String.t()}
+
+  @callback kind() :: :web | :social
+  @callback keywords(query :: String.t()) :: String.t()
+  @callback search_url(keywords :: String.t()) :: String.t()
+  @callback parse(html :: String.t()) :: [result()]
+  @callback blocked?(html :: String.t()) :: boolean()
+  @callback gated?(html :: String.t()) :: boolean()
+
+  @doc "Collapse tags, entities, and whitespace in scraped anchor text."
+  def text(value) do
+    value = Regex.replace(~r/<[^>]+>/, value, " ")
+
+    value
+    |> html_entities()
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+  end
+
+  @doc "Decode the HTML entities emitted by engine result pages."
+  def html_entities(value) do
+    value
+    |> String.replace("&amp;", "&")
+    |> String.replace("&quot;", "\"")
+    |> String.replace("&#39;", "'")
+    |> String.replace("&#x27;", "'")
+    |> String.replace("&lt;", "<")
+    |> String.replace("&gt;", ">")
+  end
+
+  @doc """
+  Drop `site:` operators so native social searches never see engine-scoped
+  queries such as `site:linkedin.com founders`.
+  """
+  def strip_site_operators(query) when is_binary(query) do
+    query
+    |> String.split()
+    |> Enum.reject(&(String.downcase(&1) |> String.starts_with?("site:")))
+    |> Enum.join(" ")
+    |> String.trim()
+  end
+end
+
 defmodule Neuron.Search.DuckDuckGo do
   @moduledoc "DuckDuckGo HTML search through the Browser Use provider."
+  @behaviour Neuron.Search.Engine
+
+  import Neuron.Search.Engine, only: [html_entities: 1, text: 1]
 
   @endpoint "https://html.duckduckgo.com/html/"
 
+  @impl true
+  def kind, do: :web
+
+  @impl true
+  def keywords(query), do: query
+
+  @impl true
+  def search_url(keywords), do: @endpoint <> "?" <> URI.encode_query(%{"q" => keywords})
+
   def search(query, opts \\ []) when is_binary(query) do
-    url = @endpoint <> "?" <> URI.encode_query(%{"q" => query})
+    url = search_url(query)
 
     browser_opts =
       opts |> Keyword.put(:provider, :browser_use) |> Keyword.put(:task_id, "search:duckduckgo")
@@ -31,7 +93,7 @@ defmodule Neuron.Search.DuckDuckGo do
   defp search_duckduckgo(url, query, opts) do
     with {:ok, page} <- Neuron.Browser.fetch(url, opts),
          html when is_binary(html) <- page[:html] || page["html"],
-         false <- challenged?(html) do
+         false <- blocked?(html) do
       {:ok, parse(html)}
     else
       true -> fallback_search(url, query, opts, :duckduckgo_challenge)
@@ -48,7 +110,7 @@ defmodule Neuron.Search.DuckDuckGo do
 
     with {:ok, page} <- Neuron.Browser.Local.fetch(url, opts),
          html when is_binary(html) <- page[:html] || page["html"],
-         false <- challenged?(html) do
+         false <- blocked?(html) do
       {:ok, parse(html)}
     else
       _ -> model_search(query, opts)
@@ -76,6 +138,7 @@ defmodule Neuron.Search.DuckDuckGo do
     end
   end
 
+  @impl true
   def parse(html) when is_binary(html) do
     snippets =
       Regex.scan(~r/<a[^>]*class=["'][^"']*result__snippet[^"']*["'][^>]*>(.*?)<\/a>/is, html,
@@ -100,9 +163,13 @@ defmodule Neuron.Search.DuckDuckGo do
     |> Enum.uniq_by(& &1.url)
   end
 
-  defp challenged?(html) do
+  @impl true
+  def blocked?(html) do
     String.contains?(html, ["anomaly-modal", "challenge-form", "bots use DuckDuckGo"])
   end
+
+  @impl true
+  def gated?(_html), do: false
 
   defp normalize_url(href) do
     uri = URI.parse(html_entities(href))
@@ -124,24 +191,5 @@ defmodule Neuron.Search.DuckDuckGo do
       true ->
         html_entities(href)
     end
-  end
-
-  defp text(value) do
-    value = Regex.replace(~r/<[^>]+>/, value, " ")
-
-    value
-    |> html_entities()
-    |> String.replace(~r/\s+/, " ")
-    |> String.trim()
-  end
-
-  defp html_entities(value) do
-    value
-    |> String.replace("&amp;", "&")
-    |> String.replace("&quot;", "\"")
-    |> String.replace("&#39;", "'")
-    |> String.replace("&#x27;", "'")
-    |> String.replace("&lt;", "<")
-    |> String.replace("&gt;", ">")
   end
 end
