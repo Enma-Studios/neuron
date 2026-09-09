@@ -6,11 +6,20 @@ defmodule Neuron.Run do
   defstruct [:id, :profile, :input, :plan, :result, :error, :opts]
 
   def start_link({id, profile, input, opts}) do
-    :gen_statem.start_link({:via, Registry, {Neuron.RunRegistry, id}}, __MODULE__, {id, profile, input, opts}, [])
+    :gen_statem.start_link(
+      {:via, Registry, {Neuron.RunRegistry, id}},
+      __MODULE__,
+      {id, profile, input, opts},
+      []
+    )
   end
 
   def child_spec({id, profile, input, opts}) do
-    %{id: {__MODULE__, id}, start: {__MODULE__, :start_link, [{id, profile, input, opts}]}, type: :worker}
+    %{
+      id: {__MODULE__, id},
+      start: {__MODULE__, :start_link, [{id, profile, input, opts}]},
+      type: :worker
+    }
   end
 
   def call(id, request), do: :gen_statem.call(Neuron.RunRegistry.via(id), request)
@@ -24,7 +33,9 @@ defmodule Neuron.Run do
     run = {:neuron_run, id, profile, input, :queued, now, now, nil, nil}
     :ok = Neuron.Storage.put_run(run)
     _ = Neuron.Storage.next_event(id, :run_created, %{profile: profile})
-    {:ok, :queued, %__MODULE__{id: id, profile: profile, input: input, opts: opts}, [{:next_event, :internal, :plan}]}
+
+    {:ok, :queued, %__MODULE__{id: id, profile: profile, input: input, opts: opts},
+     [{:next_event, :internal, :plan}]}
   end
 
   def queued(:internal, :plan, data) do
@@ -32,7 +43,9 @@ defmodule Neuron.Run do
     {:next_state, :planning, data, [{:next_event, :internal, :run_plan}]}
   end
 
-  def queued({:call, from}, :get, data), do: {:keep_state_and_data, [{:reply, from, snapshot(data, :queued)}]}
+  def queued({:call, from}, :get, data),
+    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :queued)}]}
+
   def queued({:call, from}, :cancel, data), do: cancel(from, data)
 
   def planning(:internal, :run_plan, data) do
@@ -42,35 +55,59 @@ defmodule Neuron.Run do
         persist_status(data, :executing)
         {:next_state, :executing, data, [{:next_event, :internal, :execute}]}
 
-      {:error, reason} -> fail(data, reason)
+      {:error, reason} ->
+        fail(data, reason)
     end
   end
 
-  def planning({:call, from}, :get, data), do: {:keep_state_and_data, [{:reply, from, snapshot(data, :planning)}]}
+  def planning({:call, from}, :get, data),
+    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :planning)}]}
+
   def planning({:call, from}, :cancel, data), do: cancel(from, data)
 
   def executing(:internal, :execute, data) do
     operation = operation_id(data)
-    _ = Neuron.Storage.put_operation({:neuron_operation, operation, data.id, data.id, :coordinator, 1, :started, data.plan, nil, DateTime.utc_now()})
+
+    _ =
+      Neuron.Storage.put_operation(
+        {:neuron_operation, operation, data.id, data.id, :coordinator, 1, :started, data.plan,
+         nil, DateTime.utc_now()}
+      )
 
     case data.profile.run(data.plan, context(data)) do
       {:ok, result} ->
-        _ = Neuron.Storage.put_operation({:neuron_operation, operation, data.id, data.id, :coordinator, 1, :completed, data.plan, result, DateTime.utc_now()})
+        _ =
+          Neuron.Storage.put_operation(
+            {:neuron_operation, operation, data.id, data.id, :coordinator, 1, :completed,
+             data.plan, result, DateTime.utc_now()}
+          )
+
         complete(%{data | result: result})
 
-      {:error, reason} -> fail(data, reason)
+      {:error, reason} ->
+        fail(data, reason)
     end
   end
 
-  def executing({:call, from}, :get, data), do: {:keep_state_and_data, [{:reply, from, snapshot(data, :executing)}]}
+  def executing({:call, from}, :get, data),
+    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :executing)}]}
+
   def executing({:call, from}, :cancel, data), do: cancel(from, data)
 
-  def complete({:call, from}, :get, data), do: {:keep_state_and_data, [{:reply, from, snapshot(data, :complete)}]}
-  def complete({:call, from}, :cancel, _data), do: {:keep_state_and_data, [{:reply, from, {:error, :already_complete}}]}
+  def complete({:call, from}, :get, data),
+    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :complete)}]}
+
+  def complete({:call, from}, :cancel, _data),
+    do: {:keep_state_and_data, [{:reply, from, {:error, :already_complete}}]}
+
   def complete(_event_type, _event, data), do: {:keep_state, data}
 
-  def failed({:call, from}, :get, data), do: {:keep_state_and_data, [{:reply, from, snapshot(data, :failed)}]}
-  def failed({:call, from}, :cancel, _data), do: {:keep_state_and_data, [{:reply, from, {:error, :already_failed}}]}
+  def failed({:call, from}, :get, data),
+    do: {:keep_state_and_data, [{:reply, from, snapshot(data, :failed)}]}
+
+  def failed({:call, from}, :cancel, _data),
+    do: {:keep_state_and_data, [{:reply, from, {:error, :already_failed}}]}
+
   def failed(_event_type, _event, data), do: {:keep_state, data}
 
   defp context(data), do: %{run_id: data.id, options: data.opts, plan: data.plan}
@@ -95,14 +132,33 @@ defmodule Neuron.Run do
   end
 
   defp persist_status(data, status, result \\ nil, error \\ nil) do
-    Neuron.Telemetry.emit([:run, :state], %{run_id: data.id, task_id: "coordinator", status: status, result: Neuron.Telemetry.summarize(result), error: inspect(error)})
+    Neuron.Telemetry.emit([:run, :state], %{
+      run_id: data.id,
+      task_id: "coordinator",
+      status: status,
+      result: Neuron.Telemetry.summarize(result),
+      error: inspect(error)
+    })
+
     now = DateTime.utc_now()
-    _ = Neuron.Storage.put_run({:neuron_run, data.id, data.profile, data.input, status, now, now, result, error})
+
+    _ =
+      Neuron.Storage.put_run(
+        {:neuron_run, data.id, data.profile, data.input, status, now, now, result, error}
+      )
+
     _ = Neuron.Storage.next_event(data.id, :status_changed, %{status: status})
     :ok
   end
 
   defp operation_id(data), do: "#{data.id}:coordinator:1"
 
-  defp snapshot(data, status), do: %{id: data.id, status: status, profile: data.profile, result: data.result, error: data.error}
+  defp snapshot(data, status),
+    do: %{
+      id: data.id,
+      status: status,
+      profile: data.profile,
+      result: data.result,
+      error: data.error
+    }
 end

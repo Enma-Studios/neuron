@@ -14,8 +14,9 @@ defmodule Neuron.Storage do
   @tables [
     {:neuron_run, [:id, :profile, :input, :status, :inserted_at, :updated_at, :result, :error]},
     {:neuron_agent, [:id, :run_id, :parent_id, :role, :status, :state, :updated_at]},
-    {:neuron_operation, [:id, :run_id, :agent_id, :kind, :attempt, :status, :request, :response, :updated_at]},
-    {:neuron_event, [:run_id, :sequence, :type, :payload, :inserted_at]},
+    {:neuron_operation,
+     [:id, :run_id, :agent_id, :kind, :attempt, :status, :request, :response, :updated_at]},
+    {:neuron_event, [:key, :run_id, :sequence, :type, :payload, :inserted_at]},
     {:neuron_outbox, [:id, :run_id, :kind, :payload, :status, :attempts, :updated_at]}
   ]
 
@@ -27,50 +28,75 @@ defmodule Neuron.Storage do
 
   def put_run(run), do: write(:neuron_run, run)
   def get_run(id), do: read(:neuron_run, id)
+
   def list_runs do
-    transaction(fn -> :mnesia.match_object({:neuron_run, :_, :_, :_, :_, :_, :_, :_, :_}) end, %{task_id: "runs:list"})
+    transaction(fn -> :mnesia.match_object({:neuron_run, :_, :_, :_, :_, :_, :_, :_, :_}) end, %{
+      task_id: "runs:list"
+    })
   end
+
   def put_agent(agent), do: write(:neuron_agent, agent)
   def put_operation(operation), do: write(:neuron_operation, operation)
   def put_outbox(entry), do: write(:neuron_outbox, entry)
 
   def update_outbox(id, status, attempts \\ nil) do
-    transaction(fn ->
-      case :mnesia.read(:neuron_outbox, id) do
-        [{:neuron_outbox, ^id, run_id, kind, payload, _old_status, old_attempts, _updated}] ->
-          :mnesia.write({:neuron_outbox, id, run_id, kind, payload, status, attempts || old_attempts, DateTime.utc_now()})
-          :ok
-        [] -> :not_found
-      end
-    end, %{task_id: "outbox:update", operation_id: id})
+    transaction(
+      fn ->
+        case :mnesia.read(:neuron_outbox, id) do
+          [{:neuron_outbox, ^id, run_id, kind, payload, _old_status, old_attempts, _updated}] ->
+            :mnesia.write(
+              {:neuron_outbox, id, run_id, kind, payload, status, attempts || old_attempts,
+               DateTime.utc_now()}
+            )
+
+            :ok
+
+          [] ->
+            :not_found
+        end
+      end,
+      %{task_id: "outbox:update", operation_id: id}
+    )
   end
 
   def next_event(run_id, type, payload) do
-    transaction(fn ->
-      sequence =
-        :mnesia.foldl(
-          fn record, max -> max(max, elem(record, 2)) end,
-          0,
-          :neuron_event
-        )
+    transaction(
+      fn ->
+        sequence =
+          :mnesia.foldl(
+            fn record, max -> Kernel.max(max, elem(record, 3)) end,
+            0,
+            :neuron_event
+          )
 
-      event = {:neuron_event, run_id, sequence + 1, type, payload, DateTime.utc_now()}
-      :mnesia.write(event)
-      event
-    end, %{run_id: run_id, task_id: "event:#{type}"})
+        event =
+          {:neuron_event, {run_id, sequence + 1}, run_id, sequence + 1, type, payload,
+           DateTime.utc_now()}
+
+        :mnesia.write(event)
+        event
+      end,
+      %{run_id: run_id, task_id: "event:#{type}"}
+    )
   end
 
   def events(run_id) do
-    transaction(fn ->
-      :mnesia.match_object({:neuron_event, run_id, :_, :_, :_, :_})
-      |> Enum.sort_by(&elem(&1, 2))
-    end, %{run_id: run_id, task_id: "events:read"})
+    transaction(
+      fn ->
+        :mnesia.match_object({:neuron_event, :_, run_id, :_, :_, :_, :_})
+        |> Enum.sort_by(&elem(&1, 3))
+      end,
+      %{run_id: run_id, task_id: "events:read"}
+    )
   end
 
   def pending_outbox do
-    transaction(fn ->
-      :mnesia.match_object({:neuron_outbox, :_, :_, :_, :pending, :_, :_})
-    end, %{task_id: "outbox:pending"})
+    transaction(
+      fn ->
+        :mnesia.match_object({:neuron_outbox, :_, :_, :_, :pending, :_, :_})
+      end,
+      %{task_id: "outbox:pending"}
+    )
   end
 
   @impl true
@@ -123,17 +149,21 @@ defmodule Neuron.Storage do
   defp register_rocksdb(_), do: :ok
 
   defp create_tables(config) do
-    copy_key = if config[:backend] == :rocksdb and Code.ensure_loaded?(:mnesia_rocksdb), do: :rocksdb_copies, else: :disc_copies
+    copy_key =
+      if config[:backend] == :rocksdb and Code.ensure_loaded?(:mnesia_rocksdb),
+        do: :rocksdb_copies,
+        else: :disc_copies
 
-    result = Enum.reduce_while(@tables, :ok, fn {table, attributes}, :ok ->
-      opts = [{:attributes, attributes}, {copy_key, [node()]}]
+    result =
+      Enum.reduce_while(@tables, :ok, fn {table, attributes}, :ok ->
+        opts = [{:attributes, attributes}, {copy_key, [node()]}]
 
-      case :mnesia.create_table(table, opts) do
-        {:atomic, :ok} -> {:cont, :ok}
-        {:aborted, {:already_exists, ^table}} -> {:cont, :ok}
-        {:aborted, reason} -> {:halt, {:error, {:create_table, table, reason}}}
-      end
-    end)
+        case :mnesia.create_table(table, opts) do
+          {:atomic, :ok} -> {:cont, :ok}
+          {:aborted, {:already_exists, ^table}} -> {:cont, :ok}
+          {:aborted, reason} -> {:halt, {:error, {:create_table, table, reason}}}
+        end
+      end)
 
     with :ok <- result do
       case :mnesia.wait_for_tables(Enum.map(@tables, &elem(&1, 0)), 30_000) do
@@ -144,14 +174,20 @@ defmodule Neuron.Storage do
   end
 
   defp write(_table, record) do
-    case transaction(fn -> :mnesia.write(record) end, %{task_id: "db:write", operation_id: inspect(elem(record, 1))}) do
+    case transaction(fn -> :mnesia.write(record) end, %{
+           task_id: "db:write",
+           operation_id: inspect(elem(record, 1))
+         }) do
       {:atomic, :ok} -> :ok
       {:aborted, reason} -> {:error, reason}
     end
   end
 
   defp read(table, key) do
-    case transaction(fn -> :mnesia.read(table, key) end, %{task_id: "db:read", operation_id: inspect(key)}) do
+    case transaction(fn -> :mnesia.read(table, key) end, %{
+           task_id: "db:read",
+           operation_id: inspect(key)
+         }) do
       {:atomic, [record]} -> {:ok, record}
       {:atomic, []} -> :not_found
       {:aborted, reason} -> {:error, reason}

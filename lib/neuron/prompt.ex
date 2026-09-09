@@ -3,7 +3,14 @@ defmodule Neuron.Prompt do
 
   def render(template, assigns, opts \\ []) when is_binary(template) and is_map(assigns) do
     version = Keyword.get(opts, :version, "1")
-    metadata = Neuron.Telemetry.trace_metadata(opts) |> Map.merge(%{template: template, template_version: version, assigns: Neuron.Telemetry.summarize(assigns)})
+
+    metadata =
+      Neuron.Telemetry.trace_metadata(opts)
+      |> Map.merge(%{
+        template: template,
+        template_version: version,
+        assigns: Neuron.Telemetry.summarize(assigns)
+      })
 
     Neuron.Telemetry.span([:prompt, :render], metadata, fn ->
       try do

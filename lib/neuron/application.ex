@@ -7,9 +7,11 @@ defmodule Neuron.Application do
   def start(_type, _args) do
     children = [
       {Neuron.Storage, []},
+      {Neuron.Dgraph, []},
       {Neuron.Outbox, []},
       {Neuron.RunRegistry, []},
       {Neuron.RunSupervisor, []},
+      {Neuron.AgentSupervisor, []},
       {Neuron.Recovery, []}
     ]
 

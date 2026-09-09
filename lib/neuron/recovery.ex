@@ -19,7 +19,8 @@ defmodule Neuron.Recovery do
         _ -> []
       end
 
-    Enum.each(active, fn {:neuron_run, id, profile, input, status, _inserted, _updated, _result, _error} ->
+    Enum.each(active, fn {:neuron_run, id, profile, input, status, _inserted, _updated, _result,
+                          _error} ->
       if status in [:queued, :planning, :executing, :waiting] do
         _ = Neuron.RunSupervisor.start_run(id, profile, input, resumed: true)
       end

@@ -12,7 +12,11 @@ defmodule Neuron.Embedding.Local do
     # ingestion usable before the Bumblebee weights have been provisioned.
     dimensions = Application.get_env(:neuron, :embeddings, [])[:dimensions] || 384
     bytes = :crypto.hash(:sha256, text)
-    {:ok, Enum.map(0..(dimensions - 1), fn index -> :binary.at(bytes, rem(index, byte_size(bytes))) / 255 end)}
+
+    {:ok,
+     Enum.map(0..(dimensions - 1), fn index ->
+       :binary.at(bytes, rem(index, byte_size(bytes))) / 255
+     end)}
   end
 end
 

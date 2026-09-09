@@ -1,5 +1,6 @@
 defmodule Neuron.Telemetry do
   @moduledoc "Consistent, redacted traces for all Neuron side effects."
+  @compile {:no_warn_undefined, :telemetry}
 
   require Logger
 
@@ -20,11 +21,21 @@ defmodule Neuron.Telemetry do
       result
     rescue
       error ->
-        emit([:exception | List.wrap(event)], Map.put(metadata, :error, Exception.message(error)), %{duration: System.monotonic_time() - started})
+        emit(
+          [:exception | List.wrap(event)],
+          Map.put(metadata, :error, Exception.message(error)),
+          %{duration: System.monotonic_time() - started}
+        )
+
         reraise error, __STACKTRACE__
     catch
       kind, reason ->
-        emit([:exception | List.wrap(event)], Map.merge(metadata, %{kind: kind, error: inspect(reason)}), %{duration: System.monotonic_time() - started})
+        emit(
+          [:exception | List.wrap(event)],
+          Map.merge(metadata, %{kind: kind, error: inspect(reason)}),
+          %{duration: System.monotonic_time() - started}
+        )
+
         :erlang.raise(kind, reason, __STACKTRACE__)
     end
   end
@@ -40,7 +51,11 @@ defmodule Neuron.Telemetry do
     if Application.get_env(:neuron, :telemetry, [])[:capture_payloads] do
       value
     else
-      %{sha256: :crypto.hash(:sha256, :erlang.term_to_binary(value)) |> Base.encode16(case: :lower), bytes: byte_size(:erlang.term_to_binary(value))}
+      %{
+        sha256:
+          :crypto.hash(:sha256, :erlang.term_to_binary(value)) |> Base.encode16(case: :lower),
+        bytes: byte_size(:erlang.term_to_binary(value))
+      }
     end
   end
 

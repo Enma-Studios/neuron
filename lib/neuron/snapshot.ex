@@ -2,7 +2,10 @@ defmodule Neuron.Snapshot do
   @moduledoc "Clean HTML snapshots and convert them into searchable Markdown."
 
   def from_html(html, metadata \\ %{}) when is_binary(html) do
-    cleaned = Neuron.Telemetry.span([:snapshot, :clean], %{task_id: "snapshot:clean"}, fn -> clean(html) end)
+    cleaned =
+      Neuron.Telemetry.span([:snapshot, :clean], %{task_id: "snapshot:clean"}, fn ->
+        clean(html)
+      end)
 
     markdown =
       if Code.ensure_loaded?(Htmd) do
@@ -14,8 +17,19 @@ defmodule Neuron.Snapshot do
         fallback_markdown(cleaned)
       end
 
-    result = Map.merge(metadata, %{markdown: markdown, content_hash: :crypto.hash(:sha256, markdown) |> Base.encode16(case: :lower), extraction_version: 1})
-    Neuron.Telemetry.emit([:snapshot, :created], %{url: metadata[:url] || metadata["url"], content_hash: result.content_hash, markdown_bytes: byte_size(markdown)})
+    result =
+      Map.merge(metadata, %{
+        markdown: markdown,
+        content_hash: :crypto.hash(:sha256, markdown) |> Base.encode16(case: :lower),
+        extraction_version: 1
+      })
+
+    Neuron.Telemetry.emit([:snapshot, :created], %{
+      url: metadata[:url] || metadata["url"],
+      content_hash: result.content_hash,
+      markdown_bytes: byte_size(markdown)
+    })
+
     {:ok, result}
   end
 

@@ -16,8 +16,22 @@ defmodule Neuron do
 
   def list_runs do
     case Neuron.Storage.list_runs() do
-      {:atomic, runs} -> Enum.map(runs, fn {:neuron_run, id, profile, _input, status, inserted, updated, result, error} -> %{id: id, profile: profile, status: status, inserted_at: inserted, updated_at: updated, result: result, error: error} end)
-      error -> error
+      {:atomic, runs} ->
+        Enum.map(runs, fn {:neuron_run, id, profile, _input, status, inserted, updated, result,
+                           error} ->
+          %{
+            id: id,
+            profile: profile,
+            status: status,
+            inserted_at: inserted,
+            updated_at: updated,
+            result: result,
+            error: error
+          }
+        end)
+
+      error ->
+        error
     end
   end
 
@@ -30,18 +44,41 @@ defmodule Neuron do
 
   def cancel_run(id), do: Neuron.Run.call(id, :cancel)
 
+  def spawn_agent(run_id, role, worker \\ Neuron.Agent.Echo, input, opts \\ []) do
+    id = Keyword.get(opts, :id, random_id())
+    parent_id = Keyword.get(opts, :parent_id)
+
+    case Neuron.AgentSupervisor.start_agent(id, run_id, parent_id, role, worker, input, opts) do
+      {:ok, _pid} -> {:ok, id}
+      error -> error
+    end
+  end
+
+  def get_agent(id), do: Neuron.Agent.call(id, :get)
+  def cancel_agent(id), do: Neuron.Agent.call(id, :cancel)
+
   def resume_run(id) do
     case Neuron.Storage.get_run(id) do
-      {:ok, {:neuron_run, ^id, profile, input, status, _inserted, _updated, result, error}} when status in [:queued, :planning, :executing] ->
-        case Neuron.RunSupervisor.start_run(id, profile, input, resumed: true, result: result, error: error) do
+      {:ok, {:neuron_run, ^id, profile, input, status, _inserted, _updated, result, error}}
+      when status in [:queued, :planning, :executing] ->
+        case Neuron.RunSupervisor.start_run(id, profile, input,
+               resumed: true,
+               result: result,
+               error: error
+             ) do
           {:ok, _pid} -> :ok
           {:error, {:already_started, _}} -> {:error, :already_running}
           error -> error
         end
 
-      {:ok, {:neuron_run, ^id, _profile, _input, status, _, _, _, _}} -> {:error, {:not_resumable, status}}
-      :not_found -> {:error, :not_found}
-      error -> error
+      {:ok, {:neuron_run, ^id, _profile, _input, status, _, _, _, _}} ->
+        {:error, {:not_resumable, status}}
+
+      :not_found ->
+        {:error, :not_found}
+
+      error ->
+        error
     end
   end
 
