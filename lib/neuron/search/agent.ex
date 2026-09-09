@@ -29,37 +29,32 @@ defmodule Neuron.Search.Agent do
 
   def run_page(handle, task, opts) do
     timeout = Keyword.get(opts, :timeout, 45_000)
+    page = Pinocchio.Browser.new_page(handle.session)
 
     try do
-      page = Pinocchio.Browser.new_page(handle.session)
+      _ = Pinocchio.Browser.visit(page, task.url)
+      Neuron.Browser.Fleet.CDP.wait_ready(page, task.url, timeout)
+      trigger_lazy_content(page)
 
-      try do
-        _ = Pinocchio.Browser.visit(page, task.url)
-        Neuron.Browser.Fleet.CDP.wait_ready(page, task.url, timeout)
-        trigger_lazy_content(page)
+      with {:ok, %{"result" => %{"value" => value}}} <-
+             Pinocchio.Browser.execute_script(page, @extraction_script),
+           transcript when is_map(transcript) <- normalize(value, task) do
+        Neuron.Telemetry.emit(
+          [:search, :agent],
+          Neuron.Telemetry.trace_metadata(opts)
+          |> Map.merge(%{
+            engine: inspect(task.engine),
+            query: Neuron.Telemetry.summarize(task.query),
+            transcript_bytes: byte_size(transcript.text)
+          })
+        )
 
-        with {:ok, %{"result" => %{"value" => value}}} <-
-               Pinocchio.Browser.execute_script(page, @extraction_script),
-             transcript when is_map(transcript) <- normalize(value, task) do
-          Neuron.Telemetry.emit(
-            [:search, :agent],
-            Neuron.Telemetry.trace_metadata(opts)
-            |> Map.merge(%{
-              engine: inspect(task.engine),
-              query: Neuron.Telemetry.summarize(task.query),
-              transcript_bytes: byte_size(transcript.text)
-            })
-          )
-
-          {:ok, transcript}
-        else
-          _ -> {:error, :transcript_extraction_failed}
-        end
-      after
-        _ = Pinocchio.Browser.close_page(page)
+        {:ok, transcript}
+      else
+        _ -> {:error, :transcript_extraction_failed}
       end
-    rescue
-      error -> {:error, {:agent_error, Exception.message(error)}}
+    after
+      _ = Pinocchio.Browser.close_page(page)
     end
   end
 

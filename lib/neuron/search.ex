@@ -23,25 +23,12 @@ defmodule Neuron.Search do
         provider.search(query, opts)
 
       searches = Keyword.get(opts, :searches) ->
-        web_all(searches, Keyword.put(opts, :query, query))
+        web_all(searches, opts)
 
       true ->
-        searches =
-          case plan_searches(query, opts) do
-            {:ok, planned} ->
-              planned
-
-            {:error, reason} ->
-              Neuron.Telemetry.emit(
-                [:search, :plan_failed],
-                Neuron.Telemetry.trace_metadata(opts)
-                |> Map.merge(%{query: Neuron.Telemetry.summarize(query), reason: inspect(reason)})
-              )
-
-              default_searches(query, opts)
-          end
-
-        web_all(searches, Keyword.put(opts, :query, query))
+        with {:ok, searches} <- plan_searches(query, opts) do
+          web_all(searches, opts)
+        end
     end
   end
 
@@ -96,8 +83,8 @@ defmodule Neuron.Search do
 
   @doc """
   Run planned searches — `%{engine: module, query: binary}` — as one fleet
-  wave and merge the results. Every search opens its own browser page and
-  failures only surface when nothing at all was found.
+  wave and merge the results. Every search opens its own browser page; the
+  wave only fails when nothing at all was found.
   """
   def web_all(searches, opts \\ []) do
     tasks = search_tasks(searches, opts)
@@ -113,7 +100,7 @@ defmodule Neuron.Search do
 
     case pages do
       {:error, reason} ->
-        fallback(query_opt(opts), opts, {:fleet_unavailable, reason})
+        {:error, {:search_unavailable, reason: {:fleet_unavailable, reason}}}
 
       pages when is_list(pages) ->
         task_by_id = Map.new(tasks, &{&1.id, &1})
@@ -123,7 +110,7 @@ defmodule Neuron.Search do
         merged = merge_results(found)
 
         if merged == [] and failures != [] do
-          fallback(query_opt(opts), opts, {:engines_exhausted, failures})
+          {:error, {:search_unavailable, reason: {:engines_exhausted, failures}}}
         else
           {:ok, merged}
         end
@@ -158,11 +145,6 @@ defmodule Neuron.Search do
         )
       end
     )
-  end
-
-  @doc "The deterministic searches used when model planning is unavailable."
-  def default_searches(query, opts) do
-    for engine <- engines(opts), do: %{engine: engine, query: query}
   end
 
   @doc "Stable platform id for an engine module, used by planner prompts and validation."
@@ -276,22 +258,6 @@ defmodule Neuron.Search do
     normalized = String.downcase(String.trim(id))
     Enum.find(enabled, &(engine_id(&1) == normalized))
   end
-
-  defp query_opt(opts), do: Keyword.get(opts, :query)
-
-  defp fallback(query, opts, reason) do
-    Neuron.Telemetry.emit(
-      [:search, :fallback],
-      Neuron.Telemetry.trace_metadata(opts)
-      |> Map.merge(%{query: Neuron.Telemetry.summarize(query), reason: inspect(reason)})
-    )
-
-    if is_binary(query) do
-      Keyword.get(opts, :fallback_provider, Neuron.Search.DuckDuckGo).search(query, opts)
-    else
-      {:error, {:search_unavailable, reason: reason}}
-    end
-  end
 end
 
 defmodule Neuron.Search.Engine do
@@ -372,51 +338,17 @@ defmodule Neuron.Search.DuckDuckGo do
       Neuron.Telemetry.trace_metadata(browser_opts)
       |> Map.put(:query, Neuron.Telemetry.summarize(query)),
       fn ->
-        search_duckduckgo(url, query, browser_opts)
+        with {:ok, page} <- Neuron.Browser.fetch(url, browser_opts),
+             html when is_binary(html) <- page[:html] || page["html"],
+             false <- blocked?(html) do
+          {:ok, parse(html)}
+        else
+          true -> {:error, :duckduckgo_challenged}
+          nil -> {:error, :search_returned_no_html}
+          {:error, reason} -> {:error, reason}
+        end
       end
     )
-  end
-
-  defp search_duckduckgo(url, query, opts) do
-    with {:ok, page} <- Neuron.Browser.fetch(url, opts),
-         html when is_binary(html) <- page[:html] || page["html"],
-         false <- blocked?(html) do
-      {:ok, parse(html)}
-    else
-      true -> fallback_search(url, query, opts, :duckduckgo_challenge)
-      nil -> fallback_search(url, query, opts, :search_returned_no_html)
-      {:error, reason} -> fallback_search(url, query, opts, reason)
-    end
-  end
-
-  defp fallback_search(_url, query, opts, reason) do
-    Neuron.Telemetry.emit(
-      [:search, :fallback],
-      Neuron.Telemetry.trace_metadata(opts) |> Map.put(:reason, inspect(reason))
-    )
-
-    model_search(query, opts)
-  end
-
-  defp model_search(query, opts) do
-    provider =
-      Keyword.get(opts, :model_provider, Application.fetch_env!(:neuron, :model)[:provider])
-
-    with {:ok, %{"search_result" => results}} <- provider.web_search(query, opts) do
-      results
-      |> Enum.map(fn result ->
-        %{
-          title: result["title"] || "",
-          url: result["link"] || result["url"] || "",
-          snippet: result["content"] || result["snippet"] || ""
-        }
-      end)
-      |> Enum.filter(&String.starts_with?(&1.url, ["https://", "http://"]))
-      |> then(&{:ok, &1})
-    else
-      {:error, fallback_reason} -> {:error, {:search_unavailable, reason: fallback_reason}}
-      _ -> {:error, {:search_unavailable, reason: :invalid_model_search_response}}
-    end
   end
 
   @impl true

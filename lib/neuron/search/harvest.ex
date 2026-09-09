@@ -5,18 +5,15 @@ defmodule Neuron.Search.Harvest do
   Each transcript produced by a page sub-agent is read by the model, which
   picks the URLs worth ingesting as prospect evidence. Every harvested URL
   must literally appear in the transcript, so the model can only select,
-  never invent. When the model fails, the transcript's own labeled links
-  degrade into results.
+  never invent.
   """
 
   @max_link_lines 200
-  @max_fallback_results 20
 
   @doc """
   Harvest every transcript concurrently. Returns `{results, failures}`:
-  results are `%{title, url, reason, engines: [engine]}` maps ready for
-  merge, failures are `%{engine, query, reason}` maps for telemetry and
-  the campaign failure ledger.
+  results are engine/result-list pairs ready for merge, failures are
+  `%{engine, query, reason}` maps for telemetry and the campaign ledger.
   """
   def from_transcripts(transcripts, opts) do
     harvested =
@@ -37,7 +34,7 @@ defmodule Neuron.Search.Harvest do
           |> Map.merge(%{engine: inspect(transcript.engine), reason: inspect(reason)})
         )
 
-        {[{transcript.engine, links_results(transcript)} | found],
+        {found,
          [
            %{engine: transcript.engine, query: transcript.query, reason: inspect(reason)}
            | failures
@@ -62,16 +59,6 @@ defmodule Neuron.Search.Harvest do
       &validate(&1, transcript),
       opts
     )
-  end
-
-  @doc "Deterministic degradation: the transcript's labeled links as results."
-  def links_results(transcript) do
-    transcript.links
-    |> Enum.filter(&(&1.label != ""))
-    |> Enum.take(@max_fallback_results)
-    |> Enum.map(fn link ->
-      %{title: link.label, url: link.href, reason: "selected from transcript links"}
-    end)
   end
 
   defp validate(%{"results" => results}, transcript) when is_list(results) do

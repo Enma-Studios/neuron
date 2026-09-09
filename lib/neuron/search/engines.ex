@@ -86,14 +86,14 @@ defmodule Neuron.Search.Yandex do
         %{title: text(title), url: normalize_url(href), snippet: ""}
       end)
 
-    fallback =
+    external =
       ~r/<a[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>(.*?)<\/a>/is
       |> Regex.scan(html, capture: :all_but_first)
       |> Enum.map(fn [href, title] ->
         %{title: text(title), url: normalize_url(href), snippet: ""}
       end)
 
-    (organic ++ fallback)
+    (organic ++ external)
     |> Enum.reject(&(&1.url == "" or &1.title == ""))
     |> Enum.uniq_by(& &1.url)
   end

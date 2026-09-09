@@ -143,14 +143,12 @@ defmodule Neuron.Browser.Fleet.CDP do
 
   def run_page(handle, task, opts) do
     timeout = Keyword.get(opts, :timeout, 45_000)
+    page = Pinocchio.Browser.new_page(handle.session)
 
     try do
-      page = Pinocchio.Browser.new_page(handle.session)
+      _ = Pinocchio.Browser.visit(page, task.url)
 
-      try do
-        _ = Pinocchio.Browser.visit(page, task.url)
-        wait_ready(page, task.url, timeout)
-
+      with :ok <- wait_ready(page, task.url, timeout) do
         {:ok,
          %{
            provider: handle.provider,
@@ -158,19 +156,19 @@ defmodule Neuron.Browser.Fleet.CDP do
            title: Pinocchio.Browser.page_title(page),
            html: Pinocchio.Browser.page_source(page)
          }}
-      after
-        _ = Pinocchio.Browser.close_page(page)
       end
-    rescue
-      error -> {:error, {:page_error, Exception.message(error)}}
+    after
+      _ = Pinocchio.Browser.close_page(page)
     end
   end
 
   @doc """
   Poll until the page reports the target host and its source stops
   changing. Load events cannot be used here: any concurrent tab on the
-  same session can trigger them.
+  same session can trigger them. A page that never settles is an error,
+  not a partial result.
   """
+  @spec wait_ready(term(), String.t(), timeout()) :: :ok | {:error, :page_not_ready}
   def wait_ready(page, url, timeout) do
     deadline = System.monotonic_time(:millisecond) + timeout
     poll_ready(page, url, deadline, nil)
@@ -190,9 +188,7 @@ defmodule Neuron.Browser.Fleet.CDP do
         :ok
 
       System.monotonic_time(:millisecond) >= deadline ->
-        # Return whatever rendered; engine parsers and gate detectors
-        # decide what the partial page is worth.
-        :ok
+        {:error, :page_not_ready}
 
       true ->
         Process.sleep(@poll_interval)

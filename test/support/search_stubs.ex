@@ -54,11 +54,6 @@ defmodule Neuron.SearchTest.GatedEngine do
   def gated?(html), do: String.contains?(html, "gate-page")
 end
 
-defmodule Neuron.SearchTest.FallbackEngine do
-  def search(_query, _opts),
-    do: {:ok, [%{title: "Fallback", url: "https://fallback.example/result", snippet: ""}]}
-end
-
 defmodule Neuron.SearchTest.PageAdapter do
   def run_page(_handle, task, _opts),
     do: {:ok, %{url: task.url, title: "page", html: "gate-page for #{task.url}"}}

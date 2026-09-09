@@ -34,16 +34,14 @@ defmodule Neuron.Search.HarvestTest do
              )
   end
 
-  test "from_transcripts degrades failed harvests to transcript links" do
-    assert {[{Neuron.SearchTest.SocialEngine, results}], [_failure]} =
+  test "from_transcripts records harvest failures without fabricating results" do
+    assert {[], [failure]} =
              Neuron.Search.Harvest.from_transcripts([transcript()],
                model_provider: Neuron.SearchTest.FailingModel
              )
 
-    assert Enum.map(results, & &1.url) == [
-             "https://social.example/in/jane",
-             "https://acme.example/team",
-             "https://nav.example/home"
-           ]
+    assert failure.engine == Neuron.SearchTest.SocialEngine
+    assert failure.query == "acme CTO"
+    assert failure.reason =~ "planner_down"
   end
 end

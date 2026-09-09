@@ -3,42 +3,38 @@ defmodule Neuron.Browser do
   @callback fetch(url :: String.t(), opts :: keyword()) :: {:ok, map()} | {:error, term()}
 
   def fetch(url, opts \\ []) do
-    providers = [Keyword.get(opts, :provider, :browser_use)]
+    provider = Keyword.get(opts, :provider, :browser_use)
 
     Neuron.Telemetry.span(
       [:browser, :fetch],
       Neuron.Telemetry.trace_metadata(opts) |> Map.put(:url, url),
-      fn -> attempt(providers, url, opts, []) end
-    )
-  end
-
-  defp attempt([], _url, _opts, errors), do: {:error, {:browser_blocked, Enum.reverse(errors)}}
-
-  defp attempt([provider | rest], url, opts, errors) do
-    Neuron.Telemetry.emit(
-      [:browser, :attempt],
-      Neuron.Telemetry.trace_metadata(opts) |> Map.merge(%{provider: provider, url: url})
-    )
-
-    result =
-      case Keyword.get(opts, :adapter) do
-        adapter when is_atom(adapter) and not is_nil(adapter) -> adapter.fetch(url, opts)
-        _ -> provider_module(provider).fetch(url, opts)
-      end
-
-    case result do
-      {:ok, snapshot} ->
-        {:ok, Map.put(snapshot, :provider, provider)}
-
-      {:error, reason} ->
+      fn ->
         Neuron.Telemetry.emit(
-          [:browser, :blocked],
-          Neuron.Telemetry.trace_metadata(opts)
-          |> Map.merge(%{provider: provider, url: url, reason: inspect(reason)})
+          [:browser, :attempt],
+          Neuron.Telemetry.trace_metadata(opts) |> Map.merge(%{provider: provider, url: url})
         )
 
-        attempt(rest, url, opts, [{provider, reason} | errors])
-    end
+        result =
+          case Keyword.get(opts, :adapter) do
+            adapter when is_atom(adapter) and not is_nil(adapter) -> adapter.fetch(url, opts)
+            _ -> provider_module(provider).fetch(url, opts)
+          end
+
+        case result do
+          {:ok, snapshot} ->
+            {:ok, Map.put(snapshot, :provider, provider)}
+
+          {:error, reason} ->
+            Neuron.Telemetry.emit(
+              [:browser, :blocked],
+              Neuron.Telemetry.trace_metadata(opts)
+              |> Map.merge(%{provider: provider, url: url, reason: inspect(reason)})
+            )
+
+            {:error, reason}
+        end
+      end
+    )
   end
 
   defp provider_module(:browser_use), do: Neuron.Browser.BrowserUse
@@ -67,15 +63,10 @@ defmodule Neuron.Browser.BrowserUse do
     config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
     key = config[:api_key] || System.get_env("BROWSER_USE_API_KEY")
 
-    cond do
-      is_nil(key) or key == "" ->
-        {:error, :browser_use_not_configured}
-
-      not Code.ensure_loaded?(Req) ->
-        {:error, :req_unavailable}
-
-      true ->
-        fetch_with_open_session(url, opts)
+    if is_nil(key) or key == "" do
+      {:error, :browser_use_not_configured}
+    else
+      fetch_with_open_session(url, opts)
     end
   end
 
@@ -87,15 +78,10 @@ defmodule Neuron.Browser.BrowserUse do
     config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
     key = config[:api_key] || System.get_env("BROWSER_USE_API_KEY")
 
-    cond do
-      is_nil(key) or key == "" ->
-        {:error, :browser_use_not_configured}
-
-      not Code.ensure_loaded?(Req) ->
-        {:error, :req_unavailable}
-
-      true ->
-        open_pinocchio_session(config, key, opts)
+    if is_nil(key) or key == "" do
+      {:error, :browser_use_not_configured}
+    else
+      open_pinocchio_session(config, key, opts)
     end
   end
 

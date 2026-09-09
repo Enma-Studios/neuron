@@ -119,6 +119,10 @@ defmodule Neuron.SearchTest do
     test "merges corroborated results across engines with attribution" do
       results =
         Neuron.Search.web("acme founder",
+          searches: [
+            %{engine: Neuron.SearchTest.WebEngine, query: "acme founder"},
+            %{engine: Neuron.SearchTest.SocialEngine, query: "acme founder"}
+          ],
           engines: [Neuron.SearchTest.WebEngine, Neuron.SearchTest.SocialEngine],
           handles: [%{provider: :fake, session: nil}],
           pages_per_session: 2,
@@ -137,6 +141,7 @@ defmodule Neuron.SearchTest do
     test "skips social engines when only site operators remain" do
       assert {:ok, []} =
                Neuron.Search.web("site:linkedin.com",
+                 searches: [%{engine: Neuron.SearchTest.SocialEngine, query: "site:linkedin.com"}],
                  engines: [Neuron.SearchTest.SocialEngine],
                  handles: [%{provider: :fake, session: nil}],
                  pages_per_session: 2,
@@ -161,6 +166,10 @@ defmodule Neuron.SearchTest do
 
       assert {:ok, merged} =
                Neuron.Search.web("acme founder",
+                 searches: [
+                   %{engine: Neuron.SearchTest.WebEngine, query: "acme founder"},
+                   %{engine: Neuron.SearchTest.GatedEngine, query: "acme founder"}
+                 ],
                  engines: [Neuron.SearchTest.WebEngine, Neuron.SearchTest.GatedEngine],
                  handles: [%{provider: :fake, session: nil}],
                  pages_per_session: 2,
@@ -173,17 +182,18 @@ defmodule Neuron.SearchTest do
                       %{engine: "Neuron.SearchTest.GatedEngine"}}
     end
 
-    test "falls back to a single provider when every engine fails" do
-      assert {:ok, [result]} =
+    test "fails the search when every engine fails" do
+      assert {:error, {:search_unavailable, reason: {:engines_exhausted, failures}}} =
                Neuron.Search.web("acme founder",
+                 searches: [%{engine: Neuron.SearchTest.GatedEngine, query: "acme founder"}],
                  engines: [Neuron.SearchTest.GatedEngine],
-                 fallback_provider: Neuron.SearchTest.FallbackEngine,
                  handles: [%{provider: :fake, session: nil}],
                  pages_per_session: 2,
                  page_adapter: Neuron.SearchTest.PageAdapter
                )
 
-      assert result.url == "https://fallback.example/result"
+      assert [{Neuron.SearchTest.GatedEngine, {:engine_gated, Neuron.SearchTest.GatedEngine}}] =
+               failures
     end
   end
 
@@ -216,8 +226,8 @@ defmodule Neuron.SearchTest do
                MapSet.new(["https://web.example/only", "https://shared.example/founder"])
     end
 
-    test "web/2 degrades to raw engine queries when planning fails" do
-      assert {:ok, merged} =
+    test "web/2 propagates planning failures instead of degrading" do
+      assert {:error, :planner_down} =
                Neuron.Search.web("acme founder",
                  engines: [Neuron.SearchTest.WebEngine],
                  model_provider: Neuron.SearchTest.FailingModel,
@@ -225,9 +235,6 @@ defmodule Neuron.SearchTest do
                  pages_per_session: 2,
                  page_adapter: Neuron.SearchTest.PageAdapter
                )
-
-      assert MapSet.new(Enum.map(merged, & &1.url)) ==
-               MapSet.new(["https://web.example/only", "https://shared.example/founder"])
     end
   end
 
