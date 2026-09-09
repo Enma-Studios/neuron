@@ -68,6 +68,12 @@ outputs, and durable state changes so an entire run can be reconstructed.
 
 ## Checks
 
-Run the deterministic tests with `mix test`. Dgraph integration tests should
-start Dgraph v25.4.0 in Podman and set the configured endpoint. Live Z.AI and
-Browser Use checks are opt-in and require credentials.
+Run the deterministic tests with `mix test`. The optional Dgraph integration
+check provisions Dgraph v25.4.0 in Podman, waits for its health endpoint, and
+then runs the tagged test:
+
+```sh
+scripts/dgraph_integration.sh
+```
+
+Live Z.AI and Browser Use checks are opt-in and require credentials.
