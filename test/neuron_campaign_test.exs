@@ -38,4 +38,32 @@ defmodule Neuron.CampaignTest do
 
     assert campaign.domain == "acme.example"
   end
+
+  test "validates the public campaign result and rejects malformed leads" do
+    assert {:ok, _} =
+             Neuron.Schemas.validate_campaign_result(%{
+               status: :target_met,
+               campaign_run_id: "campaign-1",
+               target_count: 1,
+               campaign: %{},
+               leads: [%{"person_name" => "Ada", "reason" => "Matched role", "fit_score" => 0.8}],
+               failures: []
+             })
+
+    assert {:error, _} =
+             Neuron.Schemas.validate_campaign_result(%{
+               status: :target_met,
+               campaign_run_id: "campaign-1",
+               target_count: 1,
+               leads: [%{"person_name" => "Ada", "reason" => "bad", "fit_score" => 2.0}]
+             })
+
+    assert {:ok, _} =
+             Neuron.Schemas.validate_campaign_result(%{
+               "status" => "target_met",
+               "campaign_run_id" => "campaign-2",
+               "target_count" => 1,
+               "leads" => [%{"person_name" => "Ada", "reason" => "Matched role"}]
+             })
+  end
 end

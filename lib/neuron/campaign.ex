@@ -201,18 +201,21 @@ defmodule Neuron.Campaign do
       status: :target_met
     })
 
-    campaign_outbox_id = persist_campaign(campaign, campaign_run_id, Map.values(leads), failures)
+    result = %{
+      status: :target_met,
+      campaign_run_id: campaign_run_id,
+      campaign: campaign,
+      target_count: target,
+      leads: Map.values(leads),
+      failures: failures
+    }
 
-    {:ok,
-     %{
-       status: :target_met,
-       campaign_run_id: campaign_run_id,
-       campaign: campaign,
-       target_count: target,
-       leads: Map.values(leads),
-       failures: failures,
-       campaign_outbox_id: campaign_outbox_id
-     }}
+    with {:ok, _validated} <- Neuron.Schemas.validate_campaign_result(result) do
+      campaign_outbox_id = persist_campaign(campaign, campaign_run_id, result.leads, failures)
+      {:ok, Map.put(result, :campaign_outbox_id, campaign_outbox_id)}
+    else
+      {:error, errors} -> {:error, {:invalid_campaign_result, errors}}
+    end
   end
 
   defp collect(campaign, opts, campaign_run_id, target, max_attempts, attempt, leads, failures)
@@ -266,18 +269,23 @@ defmodule Neuron.Campaign do
       status: :failed
     })
 
-    campaign_outbox_id = persist_campaign(campaign, campaign_run_id, Map.values(leads), failures)
+    result = %{
+      campaign_run_id: campaign_run_id,
+      campaign: campaign,
+      target_count: target,
+      leads: Map.values(leads),
+      failures: Enum.reverse(failures),
+      status: :failed
+    }
 
-    {:error,
-     {:lead_target_unmet,
-      %{
-        campaign_run_id: campaign_run_id,
-        campaign: campaign,
-        target_count: target,
-        leads: Map.values(leads),
-        failures: Enum.reverse(failures),
-        campaign_outbox_id: campaign_outbox_id
-      }}}
+    with {:ok, _validated} <- Neuron.Schemas.validate_campaign_result(result) do
+      campaign_outbox_id =
+        persist_campaign(campaign, campaign_run_id, result.leads, result.failures)
+
+      {:error, {:lead_target_unmet, Map.put(result, :campaign_outbox_id, campaign_outbox_id)}}
+    else
+      {:error, errors} -> {:error, {:invalid_campaign_result, errors}}
+    end
   end
 
   defp persist_campaign(campaign, run_id, leads, failures) do
