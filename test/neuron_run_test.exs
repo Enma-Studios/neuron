@@ -39,4 +39,16 @@ defmodule Neuron.RunTest do
     assert response.result.leads == [%{name: "Ada"}]
     assert response.leads == [%{name: "Ada"}]
   end
+
+  test "migrations are versioned and repeatable" do
+    assert {:ok, first} = Neuron.Storage.migrate()
+    assert first.version == 1
+    assert {:ok, second} = Neuron.Storage.migrate()
+    assert second.version == 1
+
+    assert Enum.any?(Neuron.Storage.migration_status(:mnesia), fn
+             {:neuron_migration, "mnesia:1", :mnesia, 1, "create_core_tables", _} -> true
+             _ -> false
+           end)
+  end
 end

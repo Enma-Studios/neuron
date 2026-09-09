@@ -24,8 +24,10 @@ defmodule Mix.Tasks.Neuron.Mnesia.Migrate do
     Mix.Task.run("app.start")
 
     case Neuron.Storage.migrate() do
-      {:ok, %{backend: backend, tables: tables}} ->
-        Mix.shell().info("Mnesia migration complete (#{backend}): #{Enum.join(tables, ", ")}")
+      {:ok, %{backend: backend, tables: tables, version: version}} ->
+        Mix.shell().info(
+          "Mnesia migration complete (v#{version}, #{backend}): #{Enum.join(tables, ", ")}"
+        )
 
       {:error, reason} ->
         Mix.raise("Mnesia migration failed: #{inspect(reason)}")

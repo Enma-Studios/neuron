@@ -18,7 +18,8 @@ defmodule Neuron.Storage do
     {:neuron_operation,
      [:id, :run_id, :agent_id, :kind, :attempt, :status, :request, :response, :updated_at]},
     {:neuron_event, [:key, :run_id, :sequence, :type, :payload, :inserted_at]},
-    {:neuron_outbox, [:id, :run_id, :kind, :payload, :status, :attempts, :updated_at]}
+    {:neuron_outbox, [:id, :run_id, :kind, :payload, :status, :attempts, :updated_at]},
+    {:neuron_migration, [:id, :backend, :version, :name, :applied_at]}
   ]
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -100,6 +101,43 @@ defmodule Neuron.Storage do
     )
   end
 
+  @doc "Return applied migration records, optionally filtered by backend."
+  def migration_status(backend \\ nil) do
+    result =
+      transaction(
+        fn ->
+          :mnesia.match_object({:neuron_migration, :_, :_, :_, :_, :_})
+          |> Enum.filter(fn {:neuron_migration, _id, record_backend, _version, _name, _at} ->
+            is_nil(backend) or record_backend == backend
+          end)
+          |> Enum.sort_by(&elem(&1, 3))
+        end,
+        %{task_id: "db:migrations:read"}
+      )
+
+    case result do
+      {:atomic, records} -> records
+      {:aborted, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Record a migration version after its changes have been applied."
+  def record_migration(backend, version, name) do
+    id = "#{backend}:#{version}"
+
+    case transaction(
+           fn ->
+             :mnesia.write({:neuron_migration, id, backend, version, name, DateTime.utc_now()})
+
+             :ok
+           end,
+           %{task_id: "db:migrations:write", operation_id: id, migration_version: version}
+         ) do
+      {:atomic, :ok} -> :ok
+      {:aborted, reason} -> {:error, reason}
+    end
+  end
+
   @doc """
   Ensure the durable Mnesia schema and Neuron tables exist.
 
@@ -111,11 +149,14 @@ defmodule Neuron.Storage do
 
     with :ok <- ensure_disc_schema(),
          :ok <- register_rocksdb(config),
-         :ok <- create_tables(config) do
+         :ok <- create_tables(config),
+         {:ok, applied} <- apply_pending_migrations(:mnesia) do
       {:ok,
        %{
          backend: config[:backend] || :mnesia,
-         tables: Enum.map(@tables, &elem(&1, 0))
+         tables: Enum.map(@tables, &elem(&1, 0)),
+         version: max_version(applied),
+         migrations: applied
        }}
     end
   end
@@ -221,6 +262,36 @@ defmodule Neuron.Storage do
       end
     end
   end
+
+  defp apply_pending_migrations(backend) do
+    with applied_records when is_list(applied_records) <- migration_status(backend) do
+      applied_versions = Enum.map(applied_records, &elem(&1, 3))
+
+      Enum.reduce_while(
+        Neuron.Migrations.pending(backend, applied_versions),
+        {:ok, applied_records},
+        fn
+          {version, name}, {:ok, records} ->
+            case record_migration(backend, version, name) do
+              :ok ->
+                record =
+                  {:neuron_migration, "#{backend}:#{version}", backend, version, name,
+                   DateTime.utc_now()}
+
+                {:cont, {:ok, [record | records]}}
+
+              {:error, reason} ->
+                {:halt, {:error, {:migration, backend, version, reason}}}
+            end
+        end
+      )
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp max_version([]), do: 0
+  defp max_version(records), do: Enum.max(Enum.map(records, &elem(&1, 3)))
 
   defp write(_table, record, metadata) do
     db_metadata =
