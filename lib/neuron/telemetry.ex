@@ -2,12 +2,16 @@ defmodule Neuron.Telemetry do
   @moduledoc "Consistent, redacted traces for all Neuron side effects."
   @compile {:no_warn_undefined, :telemetry}
 
-  require Logger
-
   def emit(event, metadata \\ %{}, measurements \\ %{}) do
-    :telemetry.execute([:neuron | List.wrap(event)], measurements, normalize(metadata))
-  rescue
-    UndefinedFunctionError -> Logger.debug("telemetry unavailable: #{inspect(event)}")
+    if Code.ensure_loaded?(:telemetry) do
+      apply(:telemetry, :execute, [
+        [:neuron | List.wrap(event)],
+        measurements,
+        normalize(metadata)
+      ])
+    end
+
+    :ok
   end
 
   def span(event, metadata, fun) when is_function(fun, 0) do
