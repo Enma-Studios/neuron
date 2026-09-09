@@ -9,7 +9,7 @@ defmodule Neuron.Pipeline do
     {:ok, supervisor} =
       DynamicSupervisor.start_child(
         Neuron.PipelineSupervisor,
-        {Neuron.Pipeline.Supervisor, []}
+        Supervisor.child_spec({Neuron.Pipeline.Supervisor, owner: self()}, restart: :temporary)
       )
 
     try do
@@ -48,7 +48,21 @@ end
 defmodule Neuron.Pipeline.Supervisor do
   use Supervisor
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts)
-  def init(_), do: Supervisor.init([], strategy: :one_for_all, max_restarts: 0)
+
+  def init(opts) do
+    owner = %{
+      id: :owner,
+      start: {Neuron.Pipeline.Owner, :start_link, [Keyword.fetch!(opts, :owner)]},
+      restart: :temporary,
+      significant: true
+    }
+
+    Supervisor.init([owner],
+      strategy: :one_for_all,
+      max_restarts: 0,
+      auto_shutdown: :any_significant
+    )
+  end
 end
 
 defmodule Neuron.Pipeline.Source do
@@ -71,4 +85,14 @@ defmodule Neuron.Pipeline.Mapper do
   end
 
   def handle_events(events, _from, fun), do: {:noreply, Enum.map(events, fun), fun}
+end
+
+defmodule Neuron.Pipeline.Owner do
+  @moduledoc false
+  use GenServer
+  def start_link(owner), do: GenServer.start_link(__MODULE__, owner)
+  def init(owner), do: {:ok, Process.monitor(owner)}
+
+  def handle_info({:DOWN, reference, :process, _pid, _reason}, reference),
+    do: {:stop, :normal, reference}
 end

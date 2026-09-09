@@ -21,6 +21,32 @@ defmodule Neuron.PipelineTest do
     assert %{status: :complete, leads: [%{name: "Ada"}]} = Neuron.get_run(id)
   end
 
+  test "pipeline supervision stops when its owning job is killed" do
+    parent = self()
+
+    owner =
+      spawn(fn ->
+        Neuron.Pipeline.map(
+          [:work],
+          fn _ ->
+            send(parent, {:mapper, self()})
+
+            receive do
+              :finish -> :ok
+            end
+          end, max_concurrency: 1)
+      end)
+
+    assert_receive {:mapper, mapper}, 1_000
+    monitor = Process.monitor(mapper)
+    [{_, supervisor, _, _}] = DynamicSupervisor.which_children(Neuron.PipelineSupervisor)
+    supervisor_monitor = Process.monitor(supervisor)
+    Process.exit(owner, :kill)
+    assert_receive {:DOWN, ^monitor, :process, ^mapper, _}, 1_000
+    assert_receive {:DOWN, ^supervisor_monitor, :process, ^supervisor, _}, 1_000
+    assert DynamicSupervisor.count_children(Neuron.PipelineSupervisor).active == 0
+  end
+
   test "GenStage processes every item with bounded workers and cleans up supervision" do
     before = DynamicSupervisor.count_children(Neuron.PipelineSupervisor)
     result = Neuron.Pipeline.map(Enum.to_list(1..30), &(&1 * 2), max_concurrency: 3)
@@ -81,6 +107,20 @@ defmodule Neuron.RecoveryTest do
     Oban.drain_queue(Neuron.Oban, queue: :orchestrators, with_recursion: true)
     assert :ok = Neuron.FSM.Timer.perform(timer)
     assert Neuron.get_run(id).status == :complete
+  end
+
+  test "discarded jobs surface as failed runs and can be resumed" do
+    import Ecto.Query
+    {:ok, id} = Neuron.start_run(Neuron.Coordinator.Default, %{leads: []})
+
+    Neuron.Persistence.repo().update_all(from(j in Oban.Job, where: j.args["machine_id"] == ^id),
+      set: [state: "discarded"]
+    )
+
+    assert %{status: :failed, error: :job_abandoned} = Neuron.get_run(id)
+    assert {:ok, _} = Neuron.resume_run(id)
+    Oban.drain_queue(Neuron.Oban, queue: :orchestrators, with_recursion: true)
+    assert %{status: :complete, leads: []} = Neuron.get_run(id)
   end
 
   test "rejects process-local data before persistence" do

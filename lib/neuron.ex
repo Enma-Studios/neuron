@@ -29,6 +29,7 @@ defmodule Neuron do
   def get_run(id) do
     machine = reconcile_run(id)
     data = FSM.data(machine)
+    FSM.definition(machine)
 
     snapshot =
       Map.merge(data, %{
@@ -86,7 +87,9 @@ defmodule Neuron do
 
   def provide_run(id, input) do
     data = id |> FSM.get() |> FSM.data()
-    FSM.send(id, :provided, %{input: Map.merge(data.input, input), result: nil})
+    partial = if is_map(data.result), do: data.result[:partial] || %{}, else: %{}
+    merged = data.input |> Map.merge(partial) |> Map.merge(input)
+    FSM.send(id, :provided, %{input: merged, result: nil})
   end
 
   def resume_run(id) do

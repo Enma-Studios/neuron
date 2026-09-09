@@ -21,8 +21,33 @@ defmodule Neuron.FSM do
     states = env.module |> Module.get_attribute(:states) |> Enum.reverse()
     transitions = env.module |> Module.get_attribute(:transitions) |> Enum.reverse()
 
-    for {_, opts} <- transitions do
-      unless opts[:from] in states and opts[:to] in states, do: raise("unknown transition state")
+    unless states != [] and Enum.all?(states, &is_atom/1) and Enum.uniq(states) == states,
+      do: raise(ArgumentError, "FSM states must be distinct atoms and cannot be empty")
+
+    keys = Enum.map(transitions, fn {event, opts} -> {event, opts[:from]} end)
+
+    unless Enum.uniq(keys) == keys,
+      do: raise(ArgumentError, "duplicate FSM state/event transition")
+
+    for {event, opts} <- transitions do
+      unless is_atom(event) and opts[:from] in states and opts[:to] in states,
+        do: raise(ArgumentError, "unknown FSM transition state or invalid event")
+
+      if guard = opts[:guard] do
+        unless is_atom(guard) and Module.defines?(env.module, {guard, 2}),
+          do: raise(ArgumentError, "FSM guards must name a defined function of arity two")
+      end
+
+      delay = Keyword.get(opts, :after, 0)
+
+      valid_delay =
+        case delay do
+          n when is_integer(n) and n >= 0 -> true
+          {n, unit} when is_integer(n) and n >= 0 and unit in [:seconds, :hours] -> true
+          _ -> false
+        end
+
+      unless valid_delay, do: raise(ArgumentError, "invalid FSM worker delay")
     end
 
     quote do
@@ -53,7 +78,12 @@ defmodule Neuron.FSM do
   def get(id), do: P.repo().get!(Machine, id)
   def data(%Machine{data: data}), do: P.decode(data)
   def state(id), do: get(id).state
-  def definition(machine), do: String.to_existing_atom(machine.definition)
+
+  def definition(machine) do
+    module = String.to_existing_atom(machine.definition)
+    Code.ensure_loaded!(module)
+    module
+  end
 
   def allowed_events(id) do
     machine = get(id)
@@ -153,6 +183,9 @@ defmodule Neuron.FSM.Timer do
   use Oban.Worker, queue: :agents
 
   def perform(%Oban.Job{args: args}) do
+    machine = Neuron.FSM.get(args["machine_id"])
+    Neuron.FSM.definition(machine)
+
     case Neuron.FSM.send(args["machine_id"], String.to_existing_atom(args["event"]), %{},
            version: args["version"]
          ) do
