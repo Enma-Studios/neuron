@@ -87,3 +87,38 @@ end
 defmodule Neuron.SearchTest.FailingModel do
   def complete(_messages, _opts), do: {:error, :planner_down}
 end
+
+defmodule Neuron.SearchTest.SelectingModel do
+  def complete(_messages, _opts) do
+    content =
+      Jason.encode!(%{
+        "results" => [
+          %{
+            "title" => "Jane Founder — CTO Acme",
+            "url" => "https://social.example/in/jane",
+            "reason" => "decision maker at buyer"
+          },
+          %{
+            "title" => "Jane again",
+            "url" => "https://social.example/in/jane",
+            "reason" => "duplicate"
+          }
+        ]
+      })
+
+    {:ok, %{"choices" => [%{"message" => %{"content" => content}}]}}
+  end
+end
+
+defmodule Neuron.SearchTest.HallucinatingModel do
+  def complete(_messages, _opts) do
+    content =
+      Jason.encode!(%{
+        "results" => [
+          %{"title" => "Ghost", "url" => "https://invented.example/ghost", "reason" => "nope"}
+        ]
+      })
+
+    {:ok, %{"choices" => [%{"message" => %{"content" => content}}]}}
+  end
+end

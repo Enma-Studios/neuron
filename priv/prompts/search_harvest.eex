@@ -1,0 +1,8 @@
+Harvest prospective buyer leads from one search transcript below. The seller wants decision makers at prospective buying organizations — companies or solo creators who could buy what the seller sells — and their contacts, most valuably a published company email address for cold outreach. From the transcript's links and text, select the URLs that point at candidate people, companies, or pages that reveal or corroborate them. Every URL must appear exactly in the transcript: never invent or reconstruct URLs. Exclude the seller's own domain and GitHub.
+Return {"results":[{"title":"<who or what this is>","url":"<exact transcript URL>","reason":"<one line on why this is a prospect lead or contact source>"}]}. Return an empty list when nothing qualifies.
+Search: <%= @engine %> for "<%= @query %>"
+Seller domain: <%= @seller %>
+Transcript URL: <%= @url %>
+Transcript text: <%= @text %>
+Transcript links:
+<%= @links %>
