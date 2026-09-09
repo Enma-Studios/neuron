@@ -100,6 +100,26 @@ defmodule Neuron.Storage do
     )
   end
 
+  @doc """
+  Ensure the durable Mnesia schema and Neuron tables exist.
+
+  This operation is idempotent and is safe to run from a release or a Mix
+  task while the application is already started.
+  """
+  def migrate do
+    config = Application.get_env(:neuron, :storage, [])
+
+    with :ok <- ensure_disc_schema(),
+         :ok <- register_rocksdb(config),
+         :ok <- create_tables(config) do
+      {:ok,
+       %{
+         backend: config[:backend] || :mnesia,
+         tables: Enum.map(@tables, &elem(&1, 0))
+       }}
+    end
+  end
+
   @impl true
   def init(_opts) do
     config = Application.get_env(:neuron, :storage, [])
@@ -154,7 +174,17 @@ defmodule Neuron.Storage do
     end
   end
 
-  defp register_rocksdb(%{backend: :rocksdb}) do
+  defp register_rocksdb(config) when is_list(config) do
+    if config[:backend] == :rocksdb do
+      register_rocksdb_backend()
+    else
+      :ok
+    end
+  end
+
+  defp register_rocksdb(_), do: :ok
+
+  defp register_rocksdb_backend do
     if Code.ensure_loaded?(:mnesia_rocksdb) do
       case apply(:mnesia_rocksdb, :register, []) do
         {:ok, _} -> :ok
@@ -166,8 +196,6 @@ defmodule Neuron.Storage do
       :ok
     end
   end
-
-  defp register_rocksdb(_), do: :ok
 
   defp create_tables(config) do
     copy_key =
