@@ -8,33 +8,65 @@ defmodule Neuron.Research do
   ]
 
   def run(domain, fit_profile, opts \\ []) when is_binary(domain) and is_map(fit_profile) do
-    run_id = Keyword.get(opts, :run_id, "research-#{System.unique_integer([:positive])}")
-    opts = Keyword.put(opts, :run_id, run_id)
+    with {:ok, response} <-
+           Neuron.run(
+             Neuron.Coordinator.LeadGeneration,
+             %{domain: domain, fit_profile: fit_profile},
+             opts
+           ) do
+      {:ok, response.result}
+    end
+  end
 
-    Neuron.Telemetry.span(
-      [:research, :run],
-      Neuron.Telemetry.trace_metadata(opts) |> Map.put(:domain, domain),
-      fn ->
-        with {:ok, search_results} <- discover(domain, opts),
-             {:ok, pages} <- browse_sources(search_results, opts),
-             {:ok, extraction} <- extract(domain, fit_profile, search_results, pages, opts),
-             {:ok, enriched} <-
-               re_enrich(domain, fit_profile, extraction, search_results, pages, opts),
-             {:ok, drafts} <- draft_emails(domain, enriched, pages, opts) do
-          result = normalize_result(domain, fit_profile, enriched, drafts, pages, opts)
+  def stages, do: [:discover, :browse, :extract, :enrich, :draft, :persist]
 
-          with {:ok, confirmed} <- confirm_research_output(result, opts) do
-            graph = graph_facts(confirmed, pages, opts)
+  def stage(:discover, data, opts) do
+    with {:ok, results} <- discover(data.domain, opts),
+         do: {:ok, Map.put(data, :search_results, results)}
+  end
 
-            with :ok <- persist_graph(graph, run_id, opts) do
-              {:ok, Map.merge(confirmed, %{run_id: run_id, sources: pages})}
-            end
-          else
-            {:error, reason} -> {:error, reason}
-          end
-        end
-      end
-    )
+  def stage(:browse, data, opts) do
+    with {:ok, pages} <- browse_sources(data.search_results, opts),
+         do: {:ok, Map.put(data, :pages, pages)}
+  end
+
+  def stage(:extract, data, opts) do
+    with {:ok, value} <-
+           extract(data.domain, data.fit_profile, data.search_results, data.pages, opts),
+         do: {:ok, Map.put(data, :extraction, value)}
+  end
+
+  def stage(:enrich, data, opts) do
+    with {:ok, value} <-
+           re_enrich(
+             data.domain,
+             data.fit_profile,
+             data.extraction,
+             data.search_results,
+             data.pages,
+             opts
+           ),
+         do: {:ok, Map.put(data, :extraction, value)}
+  end
+
+  def stage(:draft, data, opts) do
+    with {:ok, drafts} <- draft_emails(data.domain, data.extraction, data.pages, opts),
+         result =
+           normalize_result(
+             data.domain,
+             data.fit_profile,
+             data.extraction,
+             drafts,
+             data.pages,
+             opts
+           ),
+         {:ok, confirmed} <- confirm_research_output(result, opts),
+         do: {:ok, Map.put(data, :confirmed, confirmed)}
+  end
+
+  def stage(:persist, data, opts) do
+    with :ok <- persist_graph(graph_facts(data.confirmed, data.pages, opts), opts[:run_id], opts),
+         do: {:ok, Map.merge(data.confirmed, %{run_id: opts[:run_id], sources: data.pages})}
   end
 
   defp persist_graph(graph, run_id, opts) do
@@ -92,15 +124,13 @@ defmodule Neuron.Research do
 
     results =
       queries
-      |> Task.async_stream(
+      |> Neuron.Pipeline.map(
         fn query -> Neuron.Search.DuckDuckGo.search(query, opts) end,
-        max_concurrency: Keyword.get(opts, :search_concurrency, 2),
-        timeout: Keyword.get(opts, :search_timeout, 90_000),
-        ordered: false
+        max_concurrency: Keyword.get(opts, :search_concurrency, 2)
       )
       |> Enum.flat_map(fn
-        {:ok, {:ok, found}} -> found
-        _ -> []
+        {:ok, found} -> found
+        {:error, reason} -> raise "search failed: #{inspect(reason)}"
       end)
       |> Kernel.++(site_seeds(domain))
       |> Enum.filter(&http_url?(&1[:url]))
@@ -121,9 +151,6 @@ defmodule Neuron.Research do
 
     [
       "",
-      "/blog/ghost-http-methods/",
-      "/blog/reclaiming-clean-syscalls/",
-      "/blog/binary-exploitation/",
       "/about",
       "/team",
       "/research",
@@ -136,15 +163,21 @@ defmodule Neuron.Research do
   defp browse_sources(search_results, opts) do
     pages =
       search_results
-      |> Task.async_stream(
+      |> Neuron.Pipeline.map(
         fn result -> browse(result, opts) end,
-        max_concurrency: Keyword.get(opts, :browser_concurrency, 3),
-        timeout: Keyword.get(opts, :browser_timeout, 120_000),
-        ordered: true
+        max_concurrency: Keyword.get(opts, :browser_concurrency, 3)
       )
       |> Enum.flat_map(fn
-        {:ok, {:ok, page}} -> [page]
-        _ -> []
+        {:ok, page} ->
+          [page]
+
+        {:error, reason} ->
+          Neuron.Telemetry.emit(
+            [:research, :source_failed],
+            Map.put(Neuron.Telemetry.trace_metadata(opts), :reason, inspect(reason))
+          )
+
+          []
       end)
 
     if pages == [], do: {:error, :no_browsable_sources}, else: {:ok, pages}
@@ -329,31 +362,6 @@ defmodule Neuron.Research do
         Enum.any?(people, &(string(&1["name"]) == string(lead["person_name"])))
       end)
       |> Enum.filter(&(string(&1["person_name"]) != ""))
-
-    contact_email = extract_email(pages, domain)
-
-    leads =
-      if leads == [] and contact_email do
-        draft = List.first(list(drafts, "emails")) || %{}
-        name = organization["name"] || domain
-
-        [
-          %{
-            "person_name" => name,
-            "title" => "General contact",
-            "fit_score" => 0.5,
-            "reason" =>
-              "No named decision-maker was verified; this is the published organization contact.",
-            "email" => contact_email,
-            "email_subject" => draft["subject"] || "Neureni <> #{name}",
-            "email_body" =>
-              draft["body"] ||
-                "Hello,\n\nI would like to discuss a potential fit with your team.\n"
-          }
-        ]
-      else
-        leads
-      end
 
     %{
       domain: domain,
@@ -724,7 +732,7 @@ defmodule Neuron.Research do
   defp embedding(text, opts) do
     case Neuron.Embedding.provider().embed(text, opts) do
       {:ok, vector} -> vector
-      _ -> nil
+      {:error, reason} -> raise "embedding failed: #{inspect(reason)}"
     end
   end
 
@@ -747,6 +755,9 @@ defmodule Neuron.Coordinator.LeadGeneration do
       do: {:ok, %{domain: domain, fit_profile: fit_profile}},
       else: {:error, :no_domain}
   end
+
+  defdelegate stages(), to: Neuron.Research
+  defdelegate stage(name, data, opts), to: Neuron.Research
 
   @impl true
   def run(%{domain: domain, fit_profile: fit_profile}, context) do
