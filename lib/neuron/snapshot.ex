@@ -13,11 +13,24 @@ defmodule Neuron.Snapshot do
 
     {:ok, markdown} = Htmd.convert(cleaned, skip_tags: ["script", "style", "nav", "footer"])
 
+    from_markdown(markdown, metadata, trace_metadata, 1)
+  end
+
+  @doc """
+  Wrap Markdown already extracted inside the browser. Interaction-heavy
+  sources yield the cleaned main section this way instead of a converted
+  whole-document snapshot.
+  """
+  def from_markdown(markdown, metadata \\ %{}) when is_binary(markdown) do
+    from_markdown(markdown, metadata, Neuron.Telemetry.trace_metadata(metadata), 2)
+  end
+
+  defp from_markdown(markdown, metadata, trace_metadata, extraction_version) do
     result =
       Map.merge(metadata, %{
         markdown: markdown,
         content_hash: :crypto.hash(:sha256, markdown) |> Base.encode16(case: :lower),
-        extraction_version: 1
+        extraction_version: extraction_version
       })
 
     Neuron.Telemetry.emit(

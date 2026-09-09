@@ -12,4 +12,15 @@ defmodule Neuron.SnapshotTest do
     refute snapshot.markdown =~ "alert"
     assert is_binary(snapshot.content_hash)
   end
+
+  test "wraps in-browser markdown with hash and extraction version" do
+    {:ok, snapshot} =
+      Neuron.Snapshot.from_markdown("# Team\n\nAda is CTO.", %{url: "https://x.example"})
+
+    assert snapshot.markdown == "# Team\n\nAda is CTO."
+    assert snapshot.extraction_version == 2
+
+    assert snapshot.content_hash ==
+             :crypto.hash(:sha256, "# Team\n\nAda is CTO.") |> Base.encode16(case: :lower)
+  end
 end

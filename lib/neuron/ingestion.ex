@@ -15,8 +15,10 @@ defmodule Neuron.Ingestion do
   def stage(:fetch, data, opts) do
     url = Neuron.Knowledge.canonical_url(Map.fetch!(data.source, :url))
 
+    opts = Keyword.put(opts, :section_extract, Neuron.Browser.Scripting.rich_host?(url))
+
     with {:ok, page} <- Neuron.Browser.fetch(url, opts),
-         {:ok, snapshot} <- Neuron.Snapshot.from_html(Map.fetch!(page, :html), %{url: url}),
+         {:ok, snapshot} <- snapshot(page, url),
          {:ok, document} <-
            Neuron.Contracts.validate(Neuron.Contracts.Document, %{
              url: url,
@@ -83,4 +85,12 @@ defmodule Neuron.Ingestion do
               claim_count: length(data.claims)
             }}
   end
+
+  # Interaction-heavy pages carry Markdown extracted from their main
+  # section in the browser; everything else converts the whole document.
+  defp snapshot(%{markdown: markdown}, url) when is_binary(markdown) and markdown != "",
+    do: Neuron.Snapshot.from_markdown(markdown, %{url: url})
+
+  defp snapshot(page, url),
+    do: Neuron.Snapshot.from_html(Map.fetch!(page, :html), %{url: url})
 end

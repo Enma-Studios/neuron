@@ -102,12 +102,32 @@ defmodule Neuron.Browser.BrowserUse do
             timeout: Keyword.get(opts, :timeout, 60_000)
           )
 
-        {:ok,
-         %{
-           url: Pinocchio.Browser.current_url(session),
-           title: Pinocchio.Browser.page_title(session),
-           html: Pinocchio.Browser.page_source(session)
-         }}
+        page = %{
+          url: Pinocchio.Browser.current_url(session),
+          title: Pinocchio.Browser.page_title(session),
+          html: Pinocchio.Browser.page_source(session)
+        }
+
+        # Section extraction is an opt-in enhancement for interaction-heavy
+        # pages; when it fails the whole-document snapshot remains the
+        # document of record.
+        page =
+          if Keyword.get(opts, :section_extract) do
+            case Neuron.Browser.Scripting.extract(session) do
+              {:ok, raw} ->
+                Map.merge(page, %{
+                  markdown: raw["markdown"] || "",
+                  section_text: raw["text"] || ""
+                })
+
+              {:error, _reason} ->
+                page
+            end
+          else
+            page
+          end
+
+        {:ok, page}
       rescue
         error -> {:error, {:browser_use_error, Exception.message(error)}}
       after
