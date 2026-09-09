@@ -27,18 +27,9 @@ defmodule Neuron.MixProject do
       {:telemetry, "~> 1.3"},
       {:req, "~> 0.5"},
       {:dlex, github: "Enma-Studios/dlex", branch: "master", optional: true},
-      {:htmd, "~> 0.2", optional: true}
+      {:htmd, "~> 0.2", optional: true},
+      {:mnesia_rocksdb, github: "aeternity/mnesia_rocksdb", branch: "master", manager: :rebar3}
     ]
-
-    rocksdb_deps =
-      if System.get_env("NEURON_ENABLE_ROCKSDB") == "true" do
-        [
-          {:mnesia_rocksdb,
-           github: "aeternity/mnesia_rocksdb", branch: "master", manager: :rebar3}
-        ]
-      else
-        []
-      end
 
     ml_deps =
       if System.get_env("NEURON_ENABLE_LOCAL_ML") == "true" do
@@ -50,6 +41,6 @@ defmodule Neuron.MixProject do
     pinocchio =
       {:pinocchio, git: "git@github.com:Enma-Studios/pinocchio.git", branch: "main"}
 
-    base_deps ++ rocksdb_deps ++ ml_deps ++ [pinocchio]
+    base_deps ++ ml_deps ++ [pinocchio]
   end
 end
