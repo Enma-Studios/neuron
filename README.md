@@ -86,8 +86,8 @@ NEURON_ENABLE_LOCAL_ML=true mix deps.get
 ```
 
 `mnesia_rocksdb` and the local ML stack need a compiler/toolchain appropriate
-to the host architecture. If RocksDB cannot load on a host, Neuron falls back
-to Mnesia `disc_copies` and keeps the deterministic embedding fallback.
+to the host architecture. Neuron requires RocksDB for its default storage
+backend and fails startup when the adapter cannot load.
 
 ## Credentials and environment
 
@@ -484,8 +484,9 @@ unavailable, the local run remains inspectable and the entry remains pending.
 ## Mnesia durability and recovery
 
 Mnesia tables contain runs, agents, operations, events, and outbox entries.
-The configured default uses RocksDB copies through `mnesia_rocksdb`; Neuron
-explicitly falls back to `disc_copies` when the adapter cannot load.
+The configured default uses RocksDB copies through `mnesia_rocksdb`. The
+Mnesia schema table itself remains `disc_copies`, as required by Mnesia; all
+Neuron data tables use `rocksdb_copies` under the default backend.
 
 - Development data: `priv/neuron_data/dev`
 - Test data: `tmp/neuron_data/test`
@@ -617,9 +618,8 @@ variable has no effect.
 **RocksDB or EXLA fails to compile**
 
 Install the compiler, Rust/NIF, and architecture-specific libraries required
-by the native dependency. Neuron automatically uses Mnesia `disc_copies` if
-the RocksDB adapter cannot load; EXLA remains controlled by
-`NEURON_ENABLE_LOCAL_ML`.
+by the native dependency. Startup fails until `mnesia_rocksdb` can load;
+EXLA remains controlled by `NEURON_ENABLE_LOCAL_ML`.
 
 ## Project layout
 

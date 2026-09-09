@@ -51,8 +51,9 @@ Neuron.Storage.pending_outbox()
 
 Mnesia directories must be persistent in production. The application creates
 the schema table as `disc_copies` before creating Neuron tables. The configured
-default backend uses `mnesia_rocksdb`; the portable fallback is Mnesia
-`disc_copies` when the native adapter cannot load.
+default backend uses `mnesia_rocksdb` for all Neuron data tables. If the native
+adapter cannot load, startup and migration fail until the host environment is
+fixed.
 
 ```sh
 export NEURON_DATA_DIR=/var/lib/neuron

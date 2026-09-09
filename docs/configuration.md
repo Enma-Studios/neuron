@@ -78,6 +78,6 @@ automatic re-admission but does not delete or alter stored records.
 
 `mnesia_rocksdb` is included in the normal dependency set and is selected by
 the default `storage: [backend: :rocksdb]` configuration. It needs a native
-compiler/toolchain for the host architecture; Neuron falls back to Mnesia
-`disc_copies` when the adapter cannot load. Set `NEURON_ENABLE_LOCAL_ML=true`
-to fetch the optional local embedding stack.
+compiler/toolchain for the host architecture; startup fails when the adapter
+cannot load. Set `NEURON_ENABLE_LOCAL_ML=true` to fetch the optional local
+embedding stack.
