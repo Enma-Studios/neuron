@@ -15,7 +15,10 @@ if config_env() == :prod do
     telemetry: [capture_payloads: System.get_env("NEURON_CAPTURE_PAYLOADS", "false") == "true"],
     browser: [
       local: [executable: System.get_env("CHROMIUM", "/usr/bin/chromium")],
-      browser_use: [api_key: System.get_env("BROWSER_USE_API_KEY")]
+      browser_use: [
+        api_key: System.get_env("BROWSER_USE_API_KEY"),
+        profile_id: System.get_env("BROWSER_USE_PROFILE_ID")
+      ]
     ]
 
   config :neuron, Neuron.Repo, database: System.fetch_env!("NEURON_DATABASE")

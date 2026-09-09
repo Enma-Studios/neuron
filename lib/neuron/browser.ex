@@ -96,6 +96,25 @@ end
 
 defmodule Neuron.Browser.BrowserUse do
   @behaviour Neuron.Browser
+
+  @doc "Returns the configured Browser Use profile ID sent to every new cloud session."
+  def profile_id(opts \\ []) do
+    config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
+
+    id =
+      Keyword.get(
+        opts,
+        :browser_use_profile_id,
+        config[:profile_id] || System.get_env("BROWSER_USE_PROFILE_ID")
+      )
+
+    if is_binary(id) and id != "" do
+      id
+    else
+      raise ArgumentError, "BROWSER_USE_PROFILE_ID must be configured"
+    end
+  end
+
   @impl true
   def fetch(url, opts) do
     config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
@@ -114,11 +133,20 @@ defmodule Neuron.Browser.BrowserUse do
   end
 
   defp fetch_with_pinocchio(url, config, key, opts) do
+    profile_id = profile_id(opts)
+
     browser_config =
       config
       |> Map.new()
       |> Map.put(:api_key, key)
       |> Map.put(:api_endpoint, config[:endpoint] || config[:api_endpoint])
+      |> Map.put(:profile_id, profile_id)
+
+    Neuron.Telemetry.emit(
+      [:browser, :session],
+      Neuron.Telemetry.trace_metadata(opts)
+      |> Map.merge(%{provider: :browser_use, profile_id: profile_id})
+    )
 
     with {:ok, prepared} <- Pinocchio.Providers.BrowserUse.prepare(browser_config),
          {:ok, pid} <- Pinocchio.Session.start_link(browser: prepared),

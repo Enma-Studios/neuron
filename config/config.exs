@@ -16,7 +16,13 @@ config :neuron,
     base_url: "https://api.z.ai/api/paas/v4"
   ],
   embeddings: [provider: Neuron.Embedding.HTTP, dimensions: 384],
-  browser: [preferred: :local, local: [], browser_use: []],
+  browser: [
+    preferred: :local,
+    local: [],
+    browser_use: [
+      profile_id: System.get_env("BROWSER_USE_PROFILE_ID")
+    ]
+  ],
   limits: [max_runs: 32],
   prompts: []
 
