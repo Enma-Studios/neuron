@@ -8,6 +8,27 @@ defmodule Neuron.GraphSearch do
     Neuron.Graph.query(dql, %{"$q" => query}, opts)
   end
 
+  def profiles(query, opts \\ []) do
+    dql =
+      """
+      query profiles($q: string) {
+        organizations(func: anyoftext(description, $q), first: 25) { uid name domain industry geographies people clients }
+        people(func: anyoftext(bio, $q), first: 25) { uid name title employer location social_accounts posts }
+        requirements(func: anyoftext(description, $q), first: 25) { uid category description required_by applies_to }
+        posts(func: anyoftext(body, $q), first: 25) { uid title url author organization published_at embedding }
+      }
+      """
+
+    Neuron.Graph.query(dql, %{"$q" => query}, opts)
+  end
+
+  def fit_profiles(query, opts \\ []) do
+    dql =
+      "query fit_profiles($q: string) { results(func: anyoftext(description, $q), first: 25) @filter(type(FitProfile)) { uid name description campaign target_organizations target_people required_capabilities preferred_geographies } }"
+
+    Neuron.Graph.query(dql, %{"$q" => query}, opts)
+  end
+
   def semantic(vector, opts \\ []) do
     dql =
       "query search($v: float32vector) { results(func: similar_to(embedding, 25, $v)) { uid body source_url } }"

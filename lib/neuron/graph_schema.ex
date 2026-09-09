@@ -125,6 +125,13 @@ defmodule Neuron.Graph.Schema do
       evidence: [uid]
       embedding: float32vector
     }
+    type Capability {
+      name: string
+      description: string
+      category: string
+      evidence: [uid]
+      embedding: float32vector
+    }
     type ClientProfile {
       name: string
       summary: string
@@ -233,8 +240,12 @@ defmodule Neuron.Graph.Schema do
     """
   end
 
-  def apply(connection \\ nil) do
-    Neuron.Telemetry.emit([:graph, :schema], %{version: @version})
+  def apply(connection \\ nil, opts \\ []) do
+    Neuron.Telemetry.emit(
+      [:graph, :schema],
+      Neuron.Telemetry.trace_metadata(opts) |> Map.put(:version, @version)
+    )
+
     conn = connection || Application.get_env(:neuron, :dgraph, [])[:connection]
 
     if conn && Code.ensure_loaded?(Dlex) do
