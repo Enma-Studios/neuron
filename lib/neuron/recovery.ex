@@ -7,7 +7,9 @@ defmodule Neuron.Recovery do
 
   @impl true
   def init(_opts) do
-    send(self(), :recover)
+    if Application.get_env(:neuron, :recovery, [])[:enabled] != false,
+      do: send(self(), :recover)
+
     {:ok, %{recovered: false}}
   end
 
