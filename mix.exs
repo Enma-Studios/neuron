@@ -8,6 +8,7 @@ defmodule Neuron.MixProject do
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      source_url: "https://github.com/Enma-Studios/neuron",
       elixirc_options: [warnings_as_errors: true]
     ]
   end
