@@ -15,8 +15,8 @@ if config_env() == :prod do
     telemetry: [capture_payloads: System.get_env("NEURON_CAPTURE_PAYLOADS", "false") == "true"],
     browser: [
       fleet: [
-        sessions: String.to_integer(System.get_env("NEURON_FLEET_SESSIONS", "2")),
-        pages_per_session: String.to_integer(System.get_env("NEURON_FLEET_PAGES", "8"))
+        sessions: String.to_integer(System.get_env("NEURON_FLEET_SESSIONS", "1")),
+        pages_per_session: String.to_integer(System.get_env("NEURON_FLEET_PAGES", "4"))
       ],
       browser_use: [
         api_key: System.get_env("BROWSER_USE_API_KEY"),

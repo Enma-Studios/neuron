@@ -90,7 +90,7 @@ defmodule Neuron.CampaignPipeline do
           )
           |> Enum.take(
             min(
-              Keyword.get(opts, :batch_size, 12),
+              Keyword.get(opts, :batch_size, 8),
               Keyword.get(opts, :max_pages, 96) - length(data.urls)
             )
           )

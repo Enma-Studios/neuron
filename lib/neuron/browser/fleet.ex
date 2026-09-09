@@ -10,7 +10,7 @@ defmodule Neuron.Browser.Fleet do
 
   defstruct [:handles, :opts]
 
-  @default_opts [sessions: 2, pages_per_session: 8, timeout: 45_000]
+  @default_opts [sessions: 1, pages_per_session: 4, timeout: 45_000]
 
   @doc "Open a fleet of Browser Use cloud browser sessions."
   def open(opts \\ []) do

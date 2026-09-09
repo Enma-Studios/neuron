@@ -25,7 +25,7 @@ config :neuron,
     sequence_length: 512
   ],
   browser: [
-    fleet: [sessions: 2, pages_per_session: 8, timeout: 45_000],
+    fleet: [sessions: 1, pages_per_session: 4, timeout: 45_000],
     browser_use: [
       profile_id: System.get_env("BROWSER_USE_PROFILE_ID")
     ]
@@ -57,7 +57,7 @@ config :neuron, :oban,
   engine: Oban.Engines.Lite,
   notifier: Oban.Notifiers.PG,
   lifeline: [rescue_after: {1, :hour}],
-  queues: [orchestrators: 4, agents: 8],
+  queues: [orchestrators: 4, agents: 4],
   plugins: [{Oban.Plugins.Pruner, max_age: 86_400}]
 
 import_config "#{config_env()}.exs"

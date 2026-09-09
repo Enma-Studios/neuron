@@ -16,7 +16,7 @@ Configure Neuron through Elixir `config` and your host's `runtime.exs`. Values a
 
 `Neuron.Repo` uses SQLite, pool size 5, WAL mode, and a 15-second busy timeout. `NEURON_DATABASE` selects the path (default `neuron.db` outside production). The directory must exist and be writable. SQLite and its associated WAL files belong to the same persistent volume.
 
-The default Oban queues are `orchestrators: 4` and `agents: 8`. Pruning retains finished jobs for one day; event history is retained independently. Lifeline rescues orphaned jobs after one hour. Set the rescue duration above your longest legitimate job; campaign jobs may await several research attempts. Queue concurrency controls job execution, and source concurrency controls work inside a stage.
+The default Oban queues are `orchestrators: 4` and `agents: 4`. Pruning retains finished jobs for one day; event history is retained independently. Lifeline rescues orphaned jobs after one hour. Set the rescue duration above your longest legitimate job; campaign jobs may await several research attempts. Queue concurrency controls job execution, and source concurrency controls work inside a stage.
 
 ## Host Postgres configuration
 
@@ -34,7 +34,7 @@ config :my_app, Oban,
   repo: MyApp.Repo,
   engine: Oban.Engines.Basic,
   notifier: Oban.Notifiers.Postgres,
-  queues: [orchestrators: 4, agents: 8],
+  queues: [orchestrators: 4, agents: 4],
   lifeline: [rescue_after: {1, :hour}],
   plugins: [{Oban.Plugins.Pruner, max_age: 86_400}]
 ```
@@ -54,8 +54,8 @@ Alternatively, set `start_repo: true` and `start_oban: true` and put the Postgre
 | `ZAI_BASE_URL` | Production override for `https://api.z.ai/api/paas/v4` |
 | `BROWSER_USE_API_KEY` | Required for all browsing; Browser Use is the only browser provider |
 | `BROWSER_USE_PROFILE_ID` | Optional; Browser Use profile sent to new sessions when set |
-| `NEURON_FLEET_SESSIONS` | `2` in production; browser sessions opened per search fleet |
-| `NEURON_FLEET_PAGES` | `8` in production; concurrent pages multiplexed per fleet session |
+| `NEURON_FLEET_SESSIONS` | `1` in production; browser sessions opened per search fleet |
+| `NEURON_FLEET_PAGES` | `4` in production; concurrent pages multiplexed per fleet session |
 | `NEURON_CAPTURE_PAYLOADS` | `false`; production telemetry payload setting |
 
 Generation uses only `glm-5.3-flash`; passing another model name does not select a different model. The embedding model is independent of text generation and runs locally in the BEAM. There is no remote embedding provider.
@@ -68,7 +68,7 @@ Searches run on every enabled engine through `:neuron, :search, :engines` (DuckD
 
 Interaction-heavy pages (LinkedIn, X, Reddit, and other rendered feeds, configurable through `:neuron, :browser, :rich_hosts`) are never snapshotted whole: a bundled Turndown build is injected in the browser, and only the cleaned main section travels back as Markdown — both for search transcripts and for ingested source documents.
 
-Campaign searches run as one fleet wave: `sessions` Browser Use cloud sessions each multiplex `pages_per_session` concurrent tabs, so concurrency scales with pages rather than browser count — 2 x 8 = 16 concurrent pages by default. One sub-agent controls each page and returns a transcript (final URL, title, text, links); the model then harvests prospect URLs from the transcripts, and every harvested URL must literally appear in its transcript. `:neuron, :browser, :fleet` accepts `sessions`, `pages_per_session`, and `timeout`.
+Campaign searches run as one fleet wave: `sessions` Browser Use cloud sessions each multiplex `pages_per_session` concurrent tabs, so concurrency scales with pages rather than browser count — 1 x 4 = 4 concurrent pages by default. One sub-agent controls each page and returns a transcript (final URL, title, text, links); the model then harvests prospect URLs from the transcripts, and every harvested URL must literally appear in its transcript. `:neuron, :browser, :fleet` accepts `sessions`, `pages_per_session`, and `timeout`.
 
 ## Per-run options
 
@@ -86,7 +86,7 @@ Do not mix embedding models or dimensions in an existing graph index: re-ingest/
 
 ## Campaign budgets and ranking
 
-Campaign run options: `max_rounds: 12`, `max_queries: 50`, `searches_per_round: 8`, `max_pages: 96`, `batch_size: 12`, `budget_seconds: 7200`, and `harvest_concurrency: 4`. The time budget stops new scheduling; in-flight batches finish. The requested lead count is a target, not a truncation limit.
+Campaign run options: `max_rounds: 12`, `max_queries: 50`, `searches_per_round: 8`, `max_pages: 96`, `batch_size: 8`, `budget_seconds: 7200`, and `harvest_concurrency: 4`. The time budget stops new scheduling; in-flight batches finish. The requested lead count is a target, not a truncation limit.
 
 Selection options: `selection_threshold: 0.5` and `weights` (market 0.35, role 0.20, geography 0.15, evidence 0.15, freshness 0.15). Market relevance combines lexical fit and embedding similarity equally. Freshness decays with a 90-day half-life. Contact evidence and explicit exclusions are hard eligibility checks, independent of score.
 
