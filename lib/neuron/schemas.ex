@@ -46,6 +46,7 @@ defmodule Neuron.Schemas.Lead do
   embedded_schema do
     field(:person_name, :string)
     field(:title, :string)
+    field(:email, :string)
     field(:fit_score, :float)
     field(:reason, :string)
     field(:email_subject, :string)
@@ -59,6 +60,7 @@ defmodule Neuron.Schemas.Lead do
       |> cast(attrs, [
         :person_name,
         :title,
+        :email,
         :fit_score,
         :reason,
         :email_subject,
@@ -70,6 +72,38 @@ defmodule Neuron.Schemas.Lead do
       |> validate_change(:evidence_urls, fn :evidence_urls, urls ->
         if Enum.all?(urls, &is_binary/1), do: [], else: [is_invalid: "must contain URLs"]
       end)
+end
+
+defmodule Neuron.Schemas.CampaignResult do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  embedded_schema do
+    field(:status, :string)
+    field(:campaign_run_id, :string)
+    field(:target_count, :integer)
+    field(:campaign, :map, default: %{})
+    field(:failures, {:array, :map}, default: [])
+    field(:campaign_outbox_id, :string)
+    embeds_many(:leads, Neuron.Schemas.Lead)
+  end
+
+  def changeset(data, attrs),
+    do:
+      data
+      |> cast(attrs, [
+        :status,
+        :campaign_run_id,
+        :target_count,
+        :campaign,
+        :failures,
+        :campaign_outbox_id
+      ])
+      |> cast_embed(:leads, with: &Neuron.Schemas.Lead.changeset/2)
+      |> validate_required([:status, :campaign_run_id, :target_count])
+      |> validate_inclusion(:status, ["target_met", "failed"])
+      |> validate_number(:target_count, greater_than_or_equal_to: 1)
 end
 
 defmodule Neuron.Schemas.Research do
@@ -143,6 +177,22 @@ defmodule Neuron.Schemas do
     attrs
     |> Map.put("people", valid_people)
     |> Map.put("leads", valid_leads)
+  end
+
+  @doc "Validate the stable public shape returned by campaign orchestration."
+  def validate_campaign_result(attrs) when is_map(attrs) do
+    status = Map.get(attrs, :status, Map.get(attrs, "status"))
+
+    attrs =
+      if Map.has_key?(attrs, "status"),
+        do: Map.put(attrs, "status", to_string(status)),
+        else: Map.put(attrs, :status, to_string(status))
+
+    changeset = Neuron.Schemas.CampaignResult.changeset(%Neuron.Schemas.CampaignResult{}, attrs)
+
+    if changeset.valid?,
+      do: {:ok, Ecto.Changeset.apply_changes(changeset)},
+      else: {:error, Ecto.Changeset.traverse_errors(changeset, &format_error/1)}
   end
 
   defp sanitize_person(person) when is_map(person) do
