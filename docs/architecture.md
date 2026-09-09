@@ -36,7 +36,7 @@ A host supplies an Ecto repo and an Oban instance configured against that same r
 
 ## Campaign discovery and shared ingestion
 
-Seller intake never identifies the seller's own employees as prospects. A campaign pipeline retrieves shared knowledge, plans targeted searches, checkpoints child UUIDs, and submits one durable ingestion job per source. A waiting parent snoozes through Oban rather than holding a worker while children run. GenStage bounds concurrency inside search and embedding stages.
+Seller intake never identifies the seller's own employees as prospects. A campaign pipeline retrieves shared knowledge, plans platform-tailored searches (LinkedIn, X, and Reddit are covered natively every round even when the planner omits them), and runs them as one fleet wave: a handful of browser sessions each multiplex concurrent pages, one sub-agent per page returns a transcript, and the model harvests prospect URLs from those transcripts under an exact-URL contract. Login-gated pages count as engine failures, not results. The pipeline checkpoints child UUIDs and submits one durable ingestion job per source. A waiting parent snoozes through Oban rather than holding a worker while children run. GenStage bounds concurrency inside search and embedding stages.
 
 Each source records full Markdown before normalization. Claims retain excerpt, source, authority and observation time; reconciliation preserves alternatives and selects current values. Entities have searchable text and local multilingual embeddings. Selection combines semantic and lexical relevance with role, geography, evidence quality and freshness, after enforcing professional-contact qualification and campaign repeat suppression.
 

@@ -15,6 +15,10 @@ if config_env() == :prod do
     telemetry: [capture_payloads: System.get_env("NEURON_CAPTURE_PAYLOADS", "false") == "true"],
     browser: [
       local: [executable: System.get_env("CHROMIUM", "/usr/bin/chromium")],
+      fleet: [
+        sessions: String.to_integer(System.get_env("NEURON_FLEET_SESSIONS", "2")),
+        pages_per_session: String.to_integer(System.get_env("NEURON_FLEET_PAGES", "8"))
+      ],
       browser_use: [
         api_key: System.get_env("BROWSER_USE_API_KEY"),
         profile_id: System.get_env("BROWSER_USE_PROFILE_ID")

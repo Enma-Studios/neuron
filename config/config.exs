@@ -27,8 +27,19 @@ config :neuron,
   browser: [
     preferred: :local,
     local: [],
+    fleet: [sessions: 2, pages_per_session: 8, timeout: 45_000],
     browser_use: [
       profile_id: System.get_env("BROWSER_USE_PROFILE_ID")
+    ]
+  ],
+  search: [
+    engines: [
+      Neuron.Search.DuckDuckGo,
+      Neuron.Search.Google,
+      Neuron.Search.Yandex,
+      Neuron.Search.LinkedIn,
+      Neuron.Search.X,
+      Neuron.Search.Reddit
     ]
   ],
   limits: [max_runs: 32],
