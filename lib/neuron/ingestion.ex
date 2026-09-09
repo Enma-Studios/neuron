@@ -35,22 +35,37 @@ defmodule Neuron.Ingestion do
   end
 
   def stage(:normalize, data, opts) do
-    with {:ok, claims} <-
-           Neuron.Structured.generate(
-             "normalize_source.eex",
-             %{
-               url: data.document.url,
-               markdown:
-                 String.slice(
-                   data.document.markdown,
-                   0,
-                   Keyword.get(opts, :prompt_characters, 24000)
-                 )
-             },
-             &Neuron.Knowledge.validate_claims(&1, data.document),
-             opts
-           ),
-         do: {:ok, Map.put(data, :claims, claims)}
+    size = Keyword.get(opts, :prompt_characters, 24000)
+    true = size > 256
+
+    results =
+      data.document.markdown
+      |> String.graphemes()
+      |> Enum.chunk_every(size, size - 256)
+      |> Neuron.Pipeline.map(
+        fn chars ->
+          Neuron.Structured.generate(
+            "normalize_source.eex",
+            %{url: data.document.url, markdown: Enum.join(chars)},
+            &Neuron.Knowledge.validate_claims(&1, data.document),
+            opts
+          )
+        end,
+        max_concurrency: Keyword.get(opts, :normalization_concurrency, 2)
+      )
+
+    case Enum.find(results, &match?({:error, _}, &1)) do
+      nil ->
+        {:ok,
+         Map.put(
+           data,
+           :claims,
+           Enum.flat_map(results, fn {:ok, claims} -> claims end) |> Enum.uniq()
+         )}
+
+      error ->
+        error
+    end
   end
 
   def stage(:reconcile, data, opts) do

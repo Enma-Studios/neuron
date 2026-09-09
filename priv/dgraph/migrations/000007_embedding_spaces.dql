@@ -1,0 +1,2 @@
+embedding_space: string @index(exact) .
+capabilities: [uid] @reverse .

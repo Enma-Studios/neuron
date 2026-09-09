@@ -93,9 +93,11 @@ end
 
 defmodule Neuron.Contracts do
   @moduledoc "Validated boundaries shared by campaigns and source-independent ingestion."
-  def validate(module, attrs) do
+  def validate(module, attrs) when is_map(attrs) do
     module.changeset(struct(module), attrs) |> Ecto.Changeset.apply_action(:validate)
   end
+
+  def validate(_module, attrs), do: {:error, {:invalid_attributes, attrs}}
 
   def plain(%_{} = value), do: value |> Map.from_struct() |> Map.drop([:__meta__]) |> plain()
   def plain(value) when is_map(value), do: Map.new(value, fn {k, v} -> {k, plain(v)} end)

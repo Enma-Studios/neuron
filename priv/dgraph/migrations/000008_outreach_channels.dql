@@ -1,0 +1,13 @@
+contact_channels: [uid] @reverse .
+channel_kind: string @index(exact) .
+channel_value: string @index(exact) .
+preferred_channel: string @index(exact) .
+outreach_body: string .
+outreach_subject: string .
+score_breakdown: string .
+semantic_similarity: float @index(float) .
+type ContactChannel {
+  channel_kind
+  channel_value
+  sources
+}

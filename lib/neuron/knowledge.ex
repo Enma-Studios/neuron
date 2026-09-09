@@ -20,6 +20,40 @@ defmodule Neuron.Knowledge do
   def entity_id("Organization", identity), do: id("org", domain(identity))
   def entity_id(type, identity), do: id(String.downcase(type), canonical_url(identity))
 
+  @doc "Record an explicit caller assertion; it overrides observed values but is not contact verification."
+  def assert_fact(attrs, opts \\ []) do
+    value = Map.get(attrs, :value, Map.get(attrs, "value"))
+
+    attrs =
+      attrs
+      |> Map.put(:excerpt, value)
+      |> Map.put(:source_url, "urn:neuron:user")
+
+    with {:ok, claim} <- Neuron.Contracts.validate(Neuron.Contracts.Claim, attrs) do
+      entity = entity_id(claim.entity_type, claim.identity)
+
+      node = %{
+        "uid" => entity,
+        "dgraph.type" => [claim.entity_type, "Entity"],
+        "assertions" => [
+          %{
+            "uid" => id("user-assertion", entity <> claim.predicate <> claim.value),
+            "dgraph.type" => ["Assertion", "Entity"],
+            "predicate" => claim.predicate,
+            "claim_value" => claim.value,
+            "excerpt" => claim.value,
+            "url" => "urn:neuron:user",
+            "assertion_kind" => "user",
+            "authority" => 1.0,
+            "observed_at" => DateTime.to_iso8601(DateTime.utc_now())
+          }
+        ]
+      }
+
+      with :ok <- Neuron.Graph.upsert(node, opts), do: reconcile(entity, opts)
+    end
+  end
+
   def save_document(document, opts) do
     url = canonical_url(document.url)
     hash = Base.encode16(:crypto.hash(:sha256, document.markdown), case: :lower)
@@ -59,9 +93,11 @@ defmodule Neuron.Knowledge do
 
   def validate_claims(%{"claims" => claims}, document) when is_list(claims) do
     Enum.reduce_while(claims, {:ok, []}, fn attrs, {:ok, acc} ->
-      with {:ok, claim} <- Neuron.Contracts.validate(Neuron.Contracts.Claim, attrs),
+      with true <- is_map(attrs),
+           {:ok, claim} <- Neuron.Contracts.validate(Neuron.Contracts.Claim, attrs),
            true <- claim.source_url == document.url,
            true <- String.contains?(document.markdown, claim.excerpt),
+           true <- identity_supported?(claim, document),
            true <-
              claim.predicate != "email" or
                String.contains?(String.downcase(claim.excerpt), String.downcase(claim.value)),
@@ -76,6 +112,27 @@ defmodule Neuron.Knowledge do
   end
 
   def validate_claims(_, _), do: {:error, :expected_claims_array}
+
+  defp identity_supported?(claim, document) do
+    if not valid_http_url?(claim.identity) do
+      false
+    else
+      case claim.entity_type do
+        "Organization" ->
+          domain(claim.identity) == domain(document.url) or
+            String.contains?(document.markdown, claim.identity)
+
+        _ ->
+          canonical_url(claim.identity) == canonical_url(document.url) or
+            String.contains?(document.markdown, claim.identity)
+      end
+    end
+  end
+
+  defp valid_http_url?(value) when is_binary(value),
+    do: String.starts_with?(value, ["https://", "http://"])
+
+  defp valid_http_url?(_), do: false
 
   def ingest(claims, document, snapshot_id, opts) do
     {:ok, %{"snapshots" => [snapshot]}} =
@@ -119,7 +176,9 @@ defmodule Neuron.Knowledge do
       end)
 
     with :ok <- Neuron.Graph.upsert(nodes, opts) do
-      Enum.map(claims, &entity_id(&1.entity_type, &1.identity))
+      claims
+      |> Enum.sort_by(&if(&1.entity_type == "Organization", do: 0, else: 1))
+      |> Enum.map(&entity_id(&1.entity_type, &1.identity))
       |> Enum.uniq()
       |> Enum.reduce_while(:ok, fn entity, :ok ->
         case reconcile(entity, opts) do
@@ -134,9 +193,20 @@ defmodule Neuron.Knowledge do
     host = domain(document.url)
 
     cond do
-      host == domain(claim.identity) -> 1.0
-      host in ["linkedin.com", "x.com", "twitter.com"] -> 0.8
-      true -> 0.5
+      claim.predicate == "employer" and domain(claim.value) == host ->
+        1.0
+
+      claim.predicate == "email" and String.ends_with?(String.downcase(claim.value), "@" <> host) ->
+        1.0
+
+      host == domain(claim.identity) ->
+        1.0
+
+      host in ["linkedin.com", "x.com", "twitter.com"] ->
+        0.8
+
+      true ->
+        0.5
     end
   end
 
@@ -182,14 +252,58 @@ defmodule Neuron.Knowledge do
             end
           end)
 
-        Neuron.Graph.upsert(
+        projection =
+          case facts["location"] do
+            nil ->
+              projection
+
+            location ->
+              Map.put(projection, "location", %{
+                "uid" => id("geography", String.downcase(location)),
+                "dgraph.type" => ["Geography", "Entity"],
+                "name" => location
+              })
+          end
+
+        projection =
+          Enum.reduce(
+            [
+              {"requirements", "Requirement"},
+              {"capabilities", "Capability"},
+              {"clients", "ClientProfile"}
+            ],
+            projection,
+            fn {predicate, type}, acc ->
+              values =
+                claims
+                |> Enum.filter(&(&1["predicate"] == predicate))
+                |> Enum.uniq_by(& &1["claim_value"])
+
+              nodes =
+                Enum.map(values, fn claim ->
+                  %{
+                    "uid" => id(String.downcase(type), entity <> claim["claim_value"]),
+                    "dgraph.type" => [type, "Entity"],
+                    "name" => claim["claim_value"],
+                    "description" => claim["claim_value"],
+                    "evidence" => [%{"uid" => claim["uid"]}]
+                  }
+                end)
+
+              if nodes == [], do: acc, else: Map.put(acc, predicate, nodes)
+            end
+          )
+
+        Neuron.Graph.replace(
           Map.merge(projection, %{
             "uid" => record["uid"],
             "knowledge_json" => Jason.encode!(facts),
             "knowledge_text" => text <> " " <> context,
             "embedding" => vector,
+            "embedding_space" => Neuron.Embedding.space(),
             "current_claims" => refs
           }),
+          ~w(current_claims employer organization owner location requirements capabilities clients),
           opts
         )
       end
@@ -228,14 +342,10 @@ defmodule Neuron.Knowledge do
   end
 
   def index_document(document, snapshot_id, opts) do
-    document.markdown
-    |> String.graphemes()
-    |> Enum.chunk_every(2000)
+    Neuron.Embedding.provider().chunks(document.markdown)
     |> Enum.with_index()
     |> Neuron.Pipeline.map(
-      fn {chars, index} ->
-        text = Enum.join(chars)
-
+      fn {text, index} ->
         with {:ok, vector} <- Neuron.Embedding.provider().embed(text, opts) do
           Neuron.Graph.upsert(
             %{
@@ -244,7 +354,8 @@ defmodule Neuron.Knowledge do
               "body" => text,
               "url" => document.url,
               "documents" => [%{"uid" => snapshot_id}],
-              "embedding" => vector
+              "embedding" => vector,
+              "embedding_space" => Neuron.Embedding.space()
             },
             opts
           )

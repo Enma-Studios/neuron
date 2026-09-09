@@ -1,6 +1,7 @@
 defmodule Neuron.Embedding do
   @moduledoc "Embedding provider contract. Ingestion requires real vectors from the configured provider."
   @callback embed(String.t(), keyword()) :: {:ok, [float()]} | {:error, term()}
+  @callback chunks(String.t()) :: [String.t()]
   def children do
     case provider() do
       Neuron.Embedding.Local -> [{Neuron.Embedding.Local, []}]
@@ -9,6 +10,14 @@ defmodule Neuron.Embedding do
   end
 
   def provider, do: Application.fetch_env!(:neuron, :embeddings) |> Keyword.fetch!(:provider)
+
+  def space do
+    config = Application.fetch_env!(:neuron, :embeddings)
+
+    if provider() == Neuron.Embedding.Local,
+      do: Keyword.fetch!(config, :model) <> "@" <> Keyword.fetch!(config, :revision),
+      else: Atom.to_string(provider())
+  end
 end
 
 defmodule Neuron.Embedding.Local do
@@ -51,6 +60,25 @@ defmodule Neuron.Embedding.Local do
   end
 
   @impl true
+  def chunks(text) do
+    config = Application.fetch_env!(:neuron, :embeddings)
+    directory = Application.app_dir(:neuron, "priv/" <> Keyword.fetch!(config, :directory))
+    {:ok, tokenizer} = Bumblebee.load_tokenizer({:local, directory})
+
+    tokens =
+      tokenizer
+      |> Bumblebee.configure(add_special_tokens: false)
+      |> Bumblebee.apply_tokenizer(text)
+
+    size = Keyword.fetch!(config, :sequence_length) - 32
+
+    tokens["input_ids"]
+    |> Nx.to_flat_list()
+    |> Enum.chunk_every(size, size - 32)
+    |> Enum.map(&Bumblebee.Tokenizer.decode(tokenizer, &1))
+  end
+
+  @impl true
   def embed(text, opts \\ []) do
     Neuron.Telemetry.span([:embedding, :local], Neuron.Telemetry.trace_metadata(opts), fn ->
       text =
@@ -70,6 +98,8 @@ end
 defmodule Neuron.Embedding.Stub do
   @moduledoc "Explicit test fixture; never configured by the production application."
   @behaviour Neuron.Embedding
+  @impl true
+  def chunks(text), do: [text]
   @impl true
   def embed(text, opts \\ []),
     do:

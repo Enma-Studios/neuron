@@ -2,7 +2,10 @@ defmodule Neuron.KnowledgeTest do
   use ExUnit.Case, async: true
 
   test "claims require exact source evidence and reject invented email addresses" do
-    document = %{url: "https://company.example/team", markdown: "Ada leads engineering."}
+    document = %{
+      url: "https://company.example/team",
+      markdown: "Ada leads engineering. https://linkedin.com/in/ada"
+    }
 
     claim = %{
       "entity_type" => "Person",
@@ -30,6 +33,8 @@ defmodule Neuron.KnowledgeTest do
                },
                document
              )
+
+    assert {:error, _} = Neuron.Knowledge.validate_claims(%{"claims" => [123]}, document)
   end
 
   test "user assertions outrank newer scraped assertions" do

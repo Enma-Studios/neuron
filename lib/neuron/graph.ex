@@ -31,6 +31,25 @@ defmodule Neuron.Graph do
     end)
   end
 
+  @doc "Replace current projection predicates while preserving assertion and document history."
+  def replace(facts, predicates, opts \\ []) do
+    connection = Keyword.get_lazy(opts, :connection, &Neuron.Dgraph.connection/0)
+    {query, payload} = upsert_request(facts)
+    deletion = Map.new(predicates, &{&1, nil}) |> Map.put("uid", payload["uid"])
+
+    Neuron.Telemetry.span([:graph, :replace], Neuron.Telemetry.trace_metadata(opts), fn ->
+      case Dlex.mutate(
+             connection,
+             %{query: query},
+             %{delete: deletion, set: encode_vectors(payload)},
+             []
+           ) do
+        {:ok, _} -> :ok
+        error -> error
+      end
+    end)
+  end
+
   defp do_upsert(facts, opts) do
     connection = Keyword.get_lazy(opts, :connection, &Neuron.Dgraph.connection/0)
     {query, payload} = upsert_request(facts)
@@ -52,7 +71,8 @@ defmodule Neuron.Graph do
         "#{variables[id]} as var(func: eq(external_id, #{Jason.encode!(id)}))"
       end)
 
-    {"{\n" <> query <> "\n}", replace_ids(facts, variables)}
+    query = if ids == [], do: "", else: "{\n" <> query <> "\n}"
+    {query, replace_ids(facts, variables)}
   end
 
   defp identify(values) when is_list(values), do: Enum.map(values, &identify/1)

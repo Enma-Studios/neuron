@@ -1,7 +1,7 @@
 defmodule Neuron.Graph.Schema do
   @moduledoc "Versioned Dgraph predicates for the shared knowledge graph."
 
-  @version 6
+  @version 8
 
   def version, do: @version
 
@@ -276,6 +276,21 @@ defmodule Neuron.Graph.Schema do
     current_claims: [uid] @reverse .
     knowledge_json: string .
     knowledge_text: string @index(fulltext) .
+    embedding_space: string @index(exact) .
+    capabilities: [uid] @reverse .
+    contact_channels: [uid] @reverse .
+    channel_kind: string @index(exact) .
+    channel_value: string @index(exact) .
+    preferred_channel: string @index(exact) .
+    outreach_body: string .
+    outreach_subject: string .
+    score_breakdown: string .
+    semantic_similarity: float @index(float) .
+    type ContactChannel {
+      channel_kind
+      channel_value
+      sources
+    }
     """
   end
 

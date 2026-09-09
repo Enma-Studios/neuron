@@ -30,7 +30,7 @@ defmodule Neuron.Structured do
                  |> String.replace(~r/^```(?:json)?\s*|\s*```$/, "")
                  |> String.trim()
                ),
-             do: validator.(json)
+             do: validate(validator, json)
 
       case result do
         {:ok, value} ->
@@ -61,5 +61,12 @@ defmodule Neuron.Structured do
           {:error, {:invalid_model_output, error}}
       end
     end
+  end
+
+  defp validate(validator, json) do
+    validator.(json)
+  rescue
+    error in [ArgumentError, FunctionClauseError, KeyError, Protocol.UndefinedError] ->
+      {:error, {:invalid_model_shape, Exception.message(error)}}
   end
 end
