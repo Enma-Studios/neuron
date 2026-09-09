@@ -1,9 +1,236 @@
 defmodule Neuron.Search do
   @moduledoc "Search providers used by the intelligence exploration pipeline."
 
+  @default_engines [
+    Neuron.Search.DuckDuckGo,
+    Neuron.Search.Google,
+    Neuron.Search.Yandex,
+    Neuron.Search.LinkedIn,
+    Neuron.Search.X,
+    Neuron.Search.Reddit
+  ]
+
+  @doc """
+  Search the web for `query`. The model first tailors the query per
+  platform — each engine has different ideal usage patterns — and the
+  tailored searches run in parallel as concurrent browser pages. Results
+  merge with engine attribution. Pass `:searches` to supply planned
+  searches directly, or `:provider` to run one provider without planning.
+  """
   def web(query, opts \\ []) do
-    provider = Keyword.get(opts, :provider, Neuron.Search.DuckDuckGo)
-    provider.search(query, opts)
+    cond do
+      provider = Keyword.get(opts, :provider) ->
+        provider.search(query, opts)
+
+      searches = Keyword.get(opts, :searches) ->
+        web_all(searches, Keyword.put(opts, :query, query))
+
+      true ->
+        searches =
+          case plan_searches(query, opts) do
+            {:ok, planned} ->
+              planned
+
+            {:error, reason} ->
+              Neuron.Telemetry.emit(
+                [:search, :plan_failed],
+                Neuron.Telemetry.trace_metadata(opts)
+                |> Map.merge(%{query: Neuron.Telemetry.summarize(query), reason: inspect(reason)})
+              )
+
+              default_searches(query, opts)
+          end
+
+        web_all(searches, Keyword.put(opts, :query, query))
+    end
+  end
+
+  @doc """
+  Run planned searches — `%{engine: module, query: binary}` — as one fleet
+  wave and merge the results. Every search opens its own browser page and
+  failures only surface when nothing at all was found.
+  """
+  def web_all(searches, opts \\ []) do
+    tasks = search_tasks(searches, opts)
+
+    pages =
+      if tasks == [] do
+        []
+      else
+        Neuron.Browser.Fleet.with_fleet(opts, fn fleet ->
+          Neuron.Browser.Fleet.fetch_pages(fleet, tasks)
+        end)
+      end
+
+    case pages do
+      {:error, reason} ->
+        fallback(query_opt(opts), opts, {:fleet_unavailable, reason})
+
+      pages when is_list(pages) ->
+        task_by_id = Map.new(tasks, &{&1.id, &1})
+
+        collected = for {id, page} <- pages, task = task_by_id[id], do: {task, page}
+        {found, failures} = collect_engine_pages(collected)
+        merged = merge_results(found)
+
+        if merged == [] and failures != [] do
+          fallback(query_opt(opts), opts, {:engines_exhausted, failures})
+        else
+          {:ok, merged}
+        end
+    end
+  end
+
+  @doc "Resolve the engine set: call opts override application config overrides defaults."
+  def engines(opts \\ []) do
+    Keyword.get(opts, :engines) ||
+      Application.get_env(:neuron, :search, [])[:engines] ||
+      @default_engines
+  end
+
+  @doc "Expand one research goal into platform-tailored searches through the model."
+  def plan_searches(query, opts) do
+    enabled = engines(opts)
+
+    assigns = %{
+      query: query,
+      engines: Enum.map_join(enabled, ", ", &"#{engine_id(&1)} (#{&1.kind()})")
+    }
+
+    Neuron.Telemetry.span(
+      [:search, :plan],
+      Neuron.Telemetry.trace_metadata(opts) |> Map.put(:query, Neuron.Telemetry.summarize(query)),
+      fn ->
+        Neuron.Structured.generate(
+          "search_plan.eex",
+          assigns,
+          &validate_searches(&1, enabled),
+          opts
+        )
+      end
+    )
+  end
+
+  @doc "The deterministic searches used when model planning is unavailable."
+  def default_searches(query, opts) do
+    for engine <- engines(opts), do: %{engine: engine, query: query}
+  end
+
+  @doc "Stable platform id for an engine module, used by planner prompts and validation."
+  def engine_id(module) do
+    module |> Module.split() |> List.last() |> String.downcase()
+  end
+
+  @doc """
+  Build one fleet page task per planned search. Social engines receive the
+  query with `site:` operators stripped; searches left with empty keywords
+  are skipped so a web-scoped query never runs natively on a social
+  platform. Searches naming engines outside the enabled set are dropped.
+  """
+  def search_tasks(searches, opts) do
+    enabled = engines(opts)
+
+    for search <- searches,
+        engine = search.engine,
+        engine in enabled,
+        keywords = engine.keywords(search.query),
+        is_binary(keywords) and keywords != "" do
+      %{
+        id: {engine, search.query},
+        engine: engine,
+        query: search.query,
+        url: engine.search_url(keywords)
+      }
+    end
+  end
+
+  @doc """
+  Collect engine page results into one merged list. Pages rendered as a bot
+  wall or a login gate count as engine failures, not results.
+  """
+  def collect_engine_pages(pages) do
+    Enum.reduce(pages, {[], []}, fn {task, page}, {found, failures} ->
+      case engine_result(task, page) do
+        {:ok, results} ->
+          {[{task.engine, results} | found], failures}
+
+        {:error, reason} ->
+          Neuron.Telemetry.emit(
+            [:search, :engine_failed],
+            Neuron.Telemetry.trace_metadata([])
+            |> Map.merge(%{engine: inspect(task.engine), reason: inspect(reason)})
+          )
+
+          {found, [{task.engine, reason} | failures]}
+      end
+    end)
+  end
+
+  @doc """
+  Merge per-engine result lists into deduplicated results ranked by how
+  many engines corroborate each URL.
+  """
+  def merge_results(engine_results) do
+    engine_results
+    |> Enum.flat_map(fn {engine, results} -> Enum.map(results, &{engine, &1}) end)
+    |> Enum.reduce(%{}, fn {engine, result}, acc ->
+      Map.update(acc, result.url, Map.put(result, :engines, [engine]), fn existing ->
+        %{existing | engines: [engine | existing.engines]}
+      end)
+    end)
+    |> Map.values()
+    |> Enum.sort_by(&{-length(&1.engines)})
+  end
+
+  defp engine_result(task, {:ok, page}) do
+    engine = task.engine
+    html = page[:html] || page["html"] || ""
+
+    cond do
+      engine.blocked?(html) -> {:error, {:engine_blocked, engine}}
+      engine.gated?(html) -> {:error, {:engine_gated, engine}}
+      true -> {:ok, engine.parse(html)}
+    end
+  end
+
+  defp engine_result(_task, {:error, reason}), do: {:error, reason}
+
+  defp validate_searches(%{"searches" => planned}, enabled) when is_list(planned) do
+    searches =
+      for %{"engine" => id, "query" => query} <- planned,
+          is_binary(id) and is_binary(query) and String.trim(query) != "",
+          engine = engine_for(id, enabled),
+          do: %{engine: engine, query: String.trim(query)}
+
+    searches
+    |> Enum.uniq_by(&{&1.engine, &1.query})
+    |> case do
+      [] -> {:error, :no_valid_searches}
+      searches -> {:ok, searches}
+    end
+  end
+
+  defp validate_searches(_other, _enabled), do: {:error, :expected_searches}
+
+  defp engine_for(id, enabled) do
+    normalized = String.downcase(String.trim(id))
+    Enum.find(enabled, &(engine_id(&1) == normalized))
+  end
+
+  defp query_opt(opts), do: Keyword.get(opts, :query)
+
+  defp fallback(query, opts, reason) do
+    Neuron.Telemetry.emit(
+      [:search, :fallback],
+      Neuron.Telemetry.trace_metadata(opts)
+      |> Map.merge(%{query: Neuron.Telemetry.summarize(query), reason: inspect(reason)})
+    )
+
+    if is_binary(query) do
+      Keyword.get(opts, :fallback_provider, Neuron.Search.DuckDuckGo).search(query, opts)
+    else
+      {:error, {:search_unavailable, reason: reason}}
+    end
   end
 end
 
