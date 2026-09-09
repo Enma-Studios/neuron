@@ -13,7 +13,9 @@ OTP application is usable on its own today, so jobs can run concurrently in a
 worker-only deployment or behind an HTTP/API layer.
 
 Deeper reference material is available in [the architecture guide](docs/architecture.md)
-and [the operations runbook](docs/operations.md).
+and [the operations runbook](docs/operations.md). See the [library guide](docs/library.md)
+for the complete module and contract reference and the [configuration guide](docs/configuration.md)
+for all runtime keys.
 
 ## What runs in a Neuron job
 

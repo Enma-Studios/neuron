@@ -97,6 +97,30 @@ These commands use external services and may incur provider usage. A Z.AI
 HTTP 429 indicates account quota/resource-package state; the request is always
 for `glm-5.3-flash`.
 
+## Campaign operation
+
+```elixir
+campaign = %{
+  organization: "example.com",
+  field: "B2B cybersecurity",
+  offer: "Security assessment partnership",
+  target_roles: ["CTO", "VP Engineering"],
+  geography: ["US", "Canada"],
+  exclusions: ["personal sources", "free-mail addresses"],
+  lead_count: 3
+}
+
+{:ok, result} = Neuron.run(Neuron.Coordinator.Campaign, campaign, timeout: 300_000)
+result.leads
+```
+
+For URL-first intake, call `Neuron.Campaign.intake(%{url: url})` and show the
+returned questions. An `:approval_required` response contains distinct
+proposals; call `Neuron.Campaign.approve/2` after the operator selects them.
+`action: :different_campaign` discards URL proposals and starts the bounded
+intake again. `lead_count` and `max_attempts` control the off-agent unique
+lead counter.
+
 ## Telemetry handlers
 
 Attach handlers before starting work when running a diagnostic shell:
@@ -125,5 +149,8 @@ Keep payload capture disabled unless the destination is access-controlled.
 - **Outbox pending:** restore Dgraph connectivity; the publisher retries
   automatically.
 - **Z.AI 401/429:** rotate the secret or restore the Z.AI resource package.
+- **Output shape confirmation:** inspect `research:confirm_output` telemetry.
+  Neuron performs one repair pass with the Ecto errors and returns a structured
+  `:invalid_research_result` error if the response remains invalid.
 - **Native dependency build failure:** disable the relevant `NEURON_ENABLE_*`
   flag and use the portable backend while fixing the build host.

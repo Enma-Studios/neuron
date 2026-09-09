@@ -29,6 +29,7 @@ provider-owned and is stopped after the fetch.
 queued → planning → executing → complete
                   └───────────→ failed
 queued/planning/executing ─────→ cancelled
+planning ──────────────────────→ needs_input → planning
 ```
 
 Each transition writes the run record and an event before moving on. Model,
@@ -46,6 +47,11 @@ prevents a Dgraph outage from destroying the local execution record.
 The graph schema is versioned in `Neuron.Graph.Schema`. Schema application is
 idempotent for the declared predicates and types; deployment tooling should
 run it against the target Dgraph endpoint before publishing domain facts.
+
+Campaign orchestration sits above individual research attempts. Intake may
+pause for user answers or approval of multiple URL-derived proposals. The
+campaign layer owns the requested lead count, deduplicates attempts, and
+publishes a Campaign node linked to selected leads.
 
 ## End-to-end discovery
 
@@ -93,3 +99,7 @@ Callers can supply `trace_id`, `run_id`, `agent_id`, `task_id`,
 these fields in telemetry and database transaction spans. Payloads are
 summarized by default, allowing trace correlation without recording secrets or
 large HTML bodies in the event stream.
+
+Research output is checked with Ecto after normalization. A failed shape check
+causes one model confirmation/repair pass with the validation errors before the
+run can publish to Dgraph.
