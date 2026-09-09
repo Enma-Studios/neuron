@@ -296,7 +296,12 @@ defmodule Neuron.Campaign do
 
   defp persist_campaign(campaign, run_id, leads, _failures, opts) do
     domain = domain(campaign)
-    lead_uids = Enum.map(leads, &%{"uid" => blank_uid("lead", domain <> lead_key(&1))})
+
+    lead_uids =
+      Enum.map(
+        leads,
+        &%{"uid" => blank_uid("lead", domain <> to_string(&1["person_name"] || &1[:person_name]))}
+      )
 
     graph =
       %{
@@ -304,7 +309,6 @@ defmodule Neuron.Campaign do
         "dgraph.type" => ["Campaign", "Entity"],
         "name" => to_string(campaign[:name] || campaign[:organization] || domain),
         "objective" => to_string(campaign[:offer] || "Lead generation"),
-        "target_people" => lead_uids,
         "leads" => lead_uids,
         "target_geographies" =>
           Enum.map(
@@ -365,7 +369,8 @@ defmodule Neuron.Campaign do
     end
   end
 
-  defp normalize_campaign(values) do
+  @doc "Validate a supplied or approved campaign brief."
+  def normalize_campaign(values) do
     values = normalize_keys(values)
 
     values =
@@ -488,10 +493,13 @@ defmodule Neuron.Campaign do
 end
 
 defmodule Neuron.Coordinator.Campaign do
-  @moduledoc "gen_statem coordinator for campaign intake and target lead collection."
+  @moduledoc "Durable campaign intake and target lead collection profile."
   @behaviour Neuron.Coordinator
 
   @impl true
+  def plan(%{approved_campaign: campaign}, _context),
+    do: Neuron.Campaign.normalize_campaign(campaign)
+
   def plan(input, context), do: Neuron.Campaign.intake(input, context[:options] || [])
 
   @impl true
