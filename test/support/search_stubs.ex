@@ -122,3 +122,48 @@ defmodule Neuron.SearchTest.HallucinatingModel do
     {:ok, %{"choices" => [%{"message" => %{"content" => content}}]}}
   end
 end
+
+defmodule Neuron.SearchTest.LoginEngine do
+  @behaviour Neuron.Search.Engine
+
+  def kind, do: :social
+  def keywords(query), do: query
+
+  def search_url(keywords),
+    do: "https://gate.example/login?q=#{URI.encode_www_form(keywords)}"
+
+  def parse(_html), do: []
+  def blocked?(_html), do: false
+  def gated?(_html), do: true
+end
+
+defmodule Neuron.SearchTest.TranscriptAgent do
+  def run_page(_handle, task, opts) do
+    domain = Keyword.get(opts, :fixture_domain, "acme.example")
+
+    {:ok,
+     %{
+       url: task.url,
+       title: "Search",
+       text: "Results for #{task.query}",
+       links: [%{href: "https://#{domain}/team", label: "Team"}],
+       engine: task.engine,
+       query: task.query
+     }}
+  end
+end
+
+defmodule Neuron.SearchTest.TeamHarvestModel do
+  def complete(_messages, opts) do
+    domain = Keyword.get(opts, :fixture_domain, "acme.example")
+
+    content =
+      Jason.encode!(%{
+        "results" => [
+          %{"title" => "Team", "url" => "https://#{domain}/team", "reason" => "buyer team"}
+        ]
+      })
+
+    {:ok, %{"choices" => [%{"message" => %{"content" => content}}]}}
+  end
+end

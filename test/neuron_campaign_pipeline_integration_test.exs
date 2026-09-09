@@ -23,6 +23,35 @@ defmodule Neuron.CampaignPipelineIntegrationTest do
     end
   end
 
+  defmodule PageAgent do
+    def run_page(_handle, task, opts) do
+      domain = opts[:fixture_domain]
+      profile = "https://linkedin.com/in/#{domain}"
+
+      links =
+        cond do
+          String.contains?(task.url, "linkedin.com") ->
+            [%{href: profile, label: "Jane Founder — CTO at #{domain}"}]
+
+          String.contains?(task.url, "duckduckgo.com") ->
+            [%{href: "https://#{domain}/team", label: "Team"}]
+
+          true ->
+            []
+        end
+
+      {:ok,
+       %{
+         url: task.url,
+         title: "Search",
+         text: "Results for #{task.query}",
+         links: links,
+         engine: task.engine,
+         query: task.query
+       }}
+    end
+  end
+
   defmodule Model do
     def complete(messages, opts) do
       prompt = List.last(messages).content
@@ -54,8 +83,29 @@ defmodule Neuron.CampaignPipelineIntegrationTest do
                 end)
             }
 
-          String.contains?(prompt, "Plan search queries") ->
-            %{queries: ["#{domain} leadership"]}
+          String.contains?(prompt, "Plan the next round of platform-tailored searches") ->
+            %{
+              searches: [
+                %{"engine" => "duckduckgo", "query" => "#{domain} leadership team"},
+                %{"engine" => "linkedin", "query" => "#{domain} CTO founder"}
+              ]
+            }
+
+          String.contains?(prompt, "Harvest prospective buyer leads") ->
+            results =
+              if String.contains?(prompt, "https://#{domain}/team") do
+                [
+                  %{
+                    "title" => "Team",
+                    "url" => "https://#{domain}/team",
+                    "reason" => "buyer organization team page"
+                  }
+                ]
+              else
+                []
+              end
+
+            %{results: results}
 
           String.contains?(prompt, "Summarize why") ->
             %{
@@ -95,6 +145,8 @@ defmodule Neuron.CampaignPipelineIntegrationTest do
     opts = [
       model_provider: Model,
       adapter: Browser,
+      page_adapter: PageAgent,
+      handles: [%{provider: :fake, session: nil}],
       fixture_domain: domain,
       fixture_location: nonce,
       max_rounds: 1

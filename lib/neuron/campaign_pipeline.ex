@@ -2,6 +2,9 @@ defmodule Neuron.CampaignPipeline do
   import Ecto.Query
 
   @moduledoc "Campaign discovery schedules durable source jobs and selects from shared graph evidence."
+
+  @social_engines [Neuron.Search.LinkedIn, Neuron.Search.X, Neuron.Search.Reddit]
+
   def stages,
     do: [:prepare, :retrieve, :plan_search, :search, :dispatch, :collect, :rank, :draft, :finish]
 
@@ -14,7 +17,7 @@ defmodule Neuron.CampaignPipeline do
      %{
        campaign: campaign,
        round: 0,
-       queries: [],
+       searches: [],
        urls: [],
        children: [],
        leads: [],
@@ -36,81 +39,75 @@ defmodule Neuron.CampaignPipeline do
     if exhausted?(data, opts) do
       {:goto, :draft, Map.put(data, :stop_reason, :budget_exhausted)}
     else
+      enabled = Neuron.Search.engines(opts)
+
       with {:ok, gaps} <- Neuron.Selection.enrichment_candidates(data.campaign, opts),
-           {:ok, queries} <-
+           {:ok, searches} <-
              Neuron.Structured.generate(
                "campaign_search.eex",
                %{
                  seller: inspect(data.campaign.seller_profile),
                  target: inspect(data.campaign.target_profile),
-                 previous_queries: inspect(data.queries),
+                 previous_searches: inspect(data.searches),
                  failures: inspect(data.failures),
-                 leads: inspect(%{selected: data.leads, candidates_needing_enrichment: gaps})
+                 leads: inspect(%{selected: data.leads, candidates_needing_enrichment: gaps}),
+                 engines: Enum.map_join(enabled, ", ", &Neuron.Search.engine_id(&1))
                },
-               &validate_queries/1,
+               &Neuron.Search.validate_searches(&1, enabled),
                opts
              ) do
-        topic =
-          Enum.join(
-            data.campaign.target_profile.markets ++
-              data.campaign.target_profile.geography ++ data.campaign.target_profile.roles,
-            " "
-          )
+        searches =
+          searches
+          |> ensure_social_coverage(data.campaign.target_profile, enabled)
+          |> Enum.reject(&(&1 in data.searches))
 
-        queries = ["site:linkedin.com #{topic}", "site:x.com #{topic}"] ++ queries
-        remaining = Keyword.get(opts, :max_queries, 12) - length(data.queries)
+        remaining = Keyword.get(opts, :max_queries, 50) - length(data.searches)
 
         pending =
-          queries
+          searches
           |> Enum.uniq()
-          |> Enum.reject(&(&1 in data.queries))
-          |> Enum.take(min(remaining, 4))
+          |> Enum.take(min(remaining, Keyword.get(opts, :searches_per_round, 8)))
 
         if pending == [],
           do: {:goto, :draft, Map.put(data, :stop_reason, :search_exhausted)},
-          else: {:ok, Map.merge(data, %{pending_queries: pending, round: data.round + 1})}
+          else: {:ok, Map.merge(data, %{pending_searches: pending, round: data.round + 1})}
       end
     end
   end
 
   def stage(:search, data, opts) do
-    results =
-      Neuron.Pipeline.map(
-        data.pending_queries,
-        fn query -> {query, Neuron.Search.web(query, opts)} end,
-        max_concurrency: Keyword.get(opts, :search_concurrency, 2)
-      )
+    search_opts = Keyword.put(opts, :seller_domain, data.campaign.seller_profile.domain)
 
-    failures =
-      for {query, {:error, reason}} <- results, do: %{query: query, reason: inspect(reason)}
+    case Neuron.Search.orchestrate(data.pending_searches, search_opts) do
+      {:ok, found, failures} ->
+        sources =
+          found
+          |> Enum.uniq_by(& &1.url)
+          |> Enum.filter(&Neuron.ContactPolicy.prospect_source?(&1.url))
+          |> Enum.reject(
+            &(Neuron.Knowledge.domain(&1.url) == data.campaign.seller_profile.domain or
+                &1.url in data.urls)
+          )
+          |> Enum.take(
+            min(
+              Keyword.get(opts, :batch_size, 12),
+              Keyword.get(opts, :max_pages, 96) - length(data.urls)
+            )
+          )
+          |> Enum.map(&%{id: Ecto.UUID.generate(), source: %{url: &1.url}})
 
-    found = for {_, {:ok, rows}} <- results, row <- rows, do: row
+        {:ok,
+         Map.merge(data, %{
+           pending_children: sources,
+           searches: data.searches ++ data.pending_searches,
+           failures: data.failures ++ Enum.map(failures, &search_failure/1)
+         })}
 
-    sources =
-      found
-      |> Enum.uniq_by(& &1.url)
-      |> Enum.filter(&Neuron.ContactPolicy.prospect_source?(&1.url))
-      |> Enum.reject(
-        &(Neuron.Knowledge.domain(&1.url) == data.campaign.seller_profile.domain or
-            &1.url in data.urls)
-      )
-      |> Enum.take(
-        min(
-          Keyword.get(opts, :batch_size, 8),
-          Keyword.get(opts, :max_pages, 32) - length(data.urls)
-        )
-      )
-      |> Enum.map(&%{id: Ecto.UUID.generate(), source: %{url: &1.url}})
+      {:error, {:search_unavailable, reason: {:all_searches_failed, failures}}} ->
+        {:error, {:search_unavailable, Enum.map(failures, &search_failure/1)}}
 
-    if found == [] and failures != [] do
-      {:error, {:search_unavailable, failures}}
-    else
-      {:ok,
-       Map.merge(data, %{
-         pending_children: sources,
-         queries: data.queries ++ data.pending_queries,
-         failures: data.failures ++ failures
-       })}
+      {:error, {:search_unavailable, reason: reason}} ->
+        {:error, {:search_unavailable, [%{query: "(search)", reason: inspect(reason)}]}}
     end
   end
 
@@ -290,20 +287,38 @@ defmodule Neuron.CampaignPipeline do
   end
 
   defp exhausted?(data, opts) do
-    data.round >= Keyword.get(opts, :max_rounds, 3) or
-      length(data.queries) >= Keyword.get(opts, :max_queries, 12) or
-      length(data.urls) >= Keyword.get(opts, :max_pages, 32) or
+    data.round >= Keyword.get(opts, :max_rounds, 12) or
+      length(data.searches) >= Keyword.get(opts, :max_queries, 50) or
+      length(data.urls) >= Keyword.get(opts, :max_pages, 96) or
       DateTime.diff(DateTime.utc_now(), data.started_at) >=
-        Keyword.get(opts, :budget_seconds, 1800)
+        Keyword.get(opts, :budget_seconds, 7200)
   end
 
-  defp validate_queries(%{"queries" => queries}) when is_list(queries) do
-    if queries != [] and Enum.all?(queries, &(is_binary(&1) and String.trim(&1) != "")),
-      do: {:ok, queries},
-      else: {:error, :invalid_queries}
+  # Native social checks are mandatory every round: LinkedIn, X, and Reddit
+  # content is often not indexed by web engines at all, so the pipeline adds
+  # a topic query whenever the planner leaves a social platform uncovered.
+  defp ensure_social_coverage(searches, target_profile, enabled) do
+    covered = MapSet.new(searches, & &1.engine)
+
+    topic =
+      Enum.join(
+        target_profile.markets ++ target_profile.geography ++ target_profile.roles,
+        " "
+      )
+
+    missing =
+      for engine <- @social_engines,
+          engine in enabled,
+          engine not in covered,
+          String.trim(topic) != "",
+          do: %{engine: engine, query: topic}
+
+    searches ++ missing
   end
 
-  defp validate_queries(_), do: {:error, :expected_queries}
+  defp search_failure(%{engine: engine, query: query, reason: reason}) do
+    %{query: "#{Neuron.Search.engine_id(engine)}: #{query}", reason: to_string(reason)}
+  end
 
   defp validate_drafts(%{"summary" => summary, "leads" => drafts}, leads)
        when is_binary(summary) and is_list(drafts) do

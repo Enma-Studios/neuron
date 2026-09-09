@@ -46,6 +46,55 @@ defmodule Neuron.Search do
   end
 
   @doc """
+  Orchestrate planned searches end to end: one sub-agent per page renders
+  the search in the fleet, and the model harvests prospect results from the
+  page transcripts. Returns `{:ok, results, failures}`; failures carry
+  per-search engine, query, and reason for the campaign ledger.
+  """
+  def orchestrate(searches, opts \\ []) do
+    tasks = search_tasks(searches, opts)
+    adapter = Keyword.get(opts, :page_adapter, Neuron.Search.Agent)
+
+    case Neuron.Browser.Fleet.with_fleet(Keyword.put(opts, :page_adapter, adapter), fn fleet ->
+           Neuron.Browser.Fleet.fetch_pages(fleet, tasks)
+         end) do
+      {:error, reason} ->
+        {:error, {:search_unavailable, reason: {:fleet_unavailable, reason}}}
+
+      pages when is_list(pages) ->
+        task_by_id = Map.new(tasks, &{&1.id, &1})
+
+        transcripts =
+          for {_id, {:ok, transcript}} <- pages, is_map(transcript), do: transcript
+
+        {open_transcripts, gated} =
+          Enum.split_with(transcripts, fn transcript -> not gated_url?(transcript.url) end)
+
+        page_failures =
+          (for {id, {:error, reason}} <- pages, task = task_by_id[id] do
+             %{engine: task.engine, query: task.query, reason: inspect(reason)}
+           end) ++
+            (for transcript <- gated do
+               %{
+                 engine: transcript.engine,
+                 query: transcript.query,
+                 reason: "login gate at #{transcript.url}"
+               }
+             end)
+
+        {found, harvest_failures} = Neuron.Search.Harvest.from_transcripts(open_transcripts, opts)
+        merged = merge_results(found)
+        failures = page_failures ++ harvest_failures
+
+        if merged == [] and failures != [] do
+          {:error, {:search_unavailable, reason: {:all_searches_failed, failures}}}
+        else
+          {:ok, merged, failures}
+        end
+    end
+  end
+
+  @doc """
   Run planned searches — `%{engine: module, query: binary}` — as one fleet
   wave and merge the results. Every search opens its own browser page and
   failures only surface when nothing at all was found.
@@ -195,7 +244,11 @@ defmodule Neuron.Search do
 
   defp engine_result(_task, {:error, reason}), do: {:error, reason}
 
-  defp validate_searches(%{"searches" => planned}, enabled) when is_list(planned) do
+  @doc """
+  Validate planner output against the enabled engines: drop searches that
+  name unknown platforms or carry empty queries, and deduplicate.
+  """
+  def validate_searches(%{"searches" => planned}, enabled) when is_list(planned) do
     searches =
       for %{"engine" => id, "query" => query} <- planned,
           is_binary(id) and is_binary(query) and String.trim(query) != "",
@@ -210,7 +263,14 @@ defmodule Neuron.Search do
     end
   end
 
-  defp validate_searches(_other, _enabled), do: {:error, :expected_searches}
+  def validate_searches(_other, _enabled), do: {:error, :expected_searches}
+
+  # A search page that landed on a login redirect never shows results, so
+  # it counts as a gated engine rather than an empty harvest.
+  defp gated_url?(url) when is_binary(url),
+    do: String.contains?(String.downcase(url), ["/authwall", "/login", "/signin"])
+
+  defp gated_url?(_), do: false
 
   defp engine_for(id, enabled) do
     normalized = String.downcase(String.trim(id))
