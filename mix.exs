@@ -46,12 +46,8 @@ defmodule Neuron.MixProject do
       end
 
     pinocchio =
-      if System.get_env("NEURON_FETCH_PINOCCHIO") == "true" do
-        [{:pinocchio, github: "Enma-Studios/pinocchio", branch: "main", optional: true}]
-      else
-        []
-      end
+      {:pinocchio, git: "git@github.com:Enma-Studios/pinocchio.git", branch: "main"}
 
-    base_deps ++ rocksdb_deps ++ ml_deps ++ pinocchio
+    base_deps ++ rocksdb_deps ++ ml_deps ++ [pinocchio]
   end
 end

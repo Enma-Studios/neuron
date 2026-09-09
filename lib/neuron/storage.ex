@@ -60,7 +60,7 @@ defmodule Neuron.Storage do
     )
   end
 
-  def next_event(run_id, type, payload) do
+  def next_event(run_id, type, payload, metadata \\ %{}) do
     transaction(
       fn ->
         sequence =
@@ -77,7 +77,7 @@ defmodule Neuron.Storage do
         :mnesia.write(event)
         event
       end,
-      %{run_id: run_id, task_id: "event:#{type}"}
+      Map.merge(%{run_id: run_id, task_id: "event:#{type}"}, metadata)
     )
   end
 

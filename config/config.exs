@@ -15,6 +15,13 @@ config :neuron,
 
 config :neuron, telemetry: [capture_payloads: false]
 
+config :pinocchio,
+  browser: [
+    executable: "/usr/bin/chromium",
+    args: ["--headless=new", "--disable-dev-shm-usage"]
+  ],
+  pool: [size: 4, checkout_timeout: 30_000]
+
 config :mnesia, dir: String.to_charlist("priv/neuron_data")
 
 import_config "#{config_env()}.exs"

@@ -11,4 +11,6 @@ config :neuron,
 
 config :mnesia, dir: String.to_charlist("tmp/neuron_data/test")
 
+config :pinocchio, browser: [executable: nil, endpoint: nil, provider: nil]
+
 config :ex_unit, exclude: [integration: true]

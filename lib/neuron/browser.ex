@@ -27,7 +27,11 @@ defmodule Neuron.Browser do
       Neuron.Telemetry.trace_metadata(opts) |> Map.merge(%{provider: provider, url: url})
     )
 
-    result = provider_module(provider).fetch(url, opts)
+    result =
+      case Keyword.get(opts, :adapter) do
+        adapter when is_atom(adapter) -> adapter.fetch(url, opts)
+        _ -> provider_module(provider).fetch(url, opts)
+      end
 
     case result do
       {:ok, snapshot} ->
@@ -53,7 +57,12 @@ defmodule Neuron.Browser.Local do
   @behaviour Neuron.Browser
   @impl true
   def fetch(url, opts) do
-    if Code.ensure_loaded?(Pinocchio.Browser) do
+    configured? =
+      Application.get_env(:pinocchio, :browser, [])
+      |> Map.new()
+      |> then(&(&1[:executable] || &1[:endpoint]))
+
+    if Code.ensure_loaded?(Pinocchio.Browser) and configured? do
       case apply(Pinocchio.Browser, :start_session, []) do
         {:ok, session} ->
           try do
@@ -80,7 +89,7 @@ defmodule Neuron.Browser.Local do
           {:error, {:local_browser_start, reason}}
       end
     else
-      {:error, :pinocchio_unavailable}
+      {:error, :pinocchio_not_configured}
     end
   end
 end

@@ -19,10 +19,8 @@ Local Chromium is the preferred browser. Browser Use is selected after a
 recorded local blockage. Configure both providers and the Dgraph endpoint in
 `config/runtime.exs` or application configuration.
 
-Pinocchio is a private dependency. When GitHub credentials are available,
-resolve it with `NEURON_FETCH_PINOCCHIO=true mix deps.get`; without that flag,
-Neuron compiles and the local browser adapter reports Pinocchio as unavailable
-until the dependency is installed.
+Pinocchio is fetched from the private GitHub repository over SSH. The local
+browser uses `/usr/bin/chromium` by default; set `CHROMIUM` for another binary.
 
 The default execution store requests the `mnesia_rocksdb` backend. Enable its
 native dependency on a C++ build host with `NEURON_ENABLE_ROCKSDB=true mix
@@ -43,6 +41,12 @@ Neuron.get_run(run_id)
 Neuron.get_agent(agent_id)
 Neuron.events(run_id)
 Neuron.cancel_run(run_id)
+
+# End-to-end web exploration and fit scoring
+Neuron.start_run(Neuron.Coordinator.Intelligence, %{
+  urls: ["https://example.com"],
+  fit_profile: %{requirements: [%{category: "industry", description: "fintech"}]}
+})
 ```
 
 Coordinator and agent modules implement behaviours, so a profile can delegate
@@ -58,6 +62,12 @@ organizations to staff and clients, accounts to owners and posts, and every
 assertion back to its source evidence. Descriptive fields and post content have
 full-text/term/trigram indexes; every searchable node can carry a cosine HNSW
 embedding for semantic and hybrid retrieval.
+
+`Neuron.Lead.evaluate/3` returns the score, selected flag, matched evidence,
+and a reason for every requirement, geography decision, and final selection.
+`Neuron.Coordinator.Intelligence` wires browser fetch, HTML-to-Markdown
+cleanup, embedding, fit scoring, and durable outbox publication into one
+parallelizable run.
 
 ## Traceability
 

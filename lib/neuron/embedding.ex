@@ -1,6 +1,10 @@
 defmodule Neuron.Embedding do
   @moduledoc "Embedding provider behaviour."
   @callback embed(text :: String.t(), opts :: keyword()) :: {:ok, [float()]} | {:error, term()}
+
+  def provider do
+    Application.get_env(:neuron, :embeddings, [])[:provider] || Neuron.Embedding.Local
+  end
 end
 
 defmodule Neuron.Embedding.Local do
