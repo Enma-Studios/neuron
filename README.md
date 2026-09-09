@@ -51,6 +51,14 @@ assembly without changing the runtime. Prompt templates are rendered with
 `Neuron.Prompt.render/3` or `render_file/3` and their versions and input hashes
 are emitted in telemetry.
 
+The versioned Dgraph ontology models organizations, people, social accounts,
+posts, clients and client profiles, geographies, requirements, leniencies,
+evidence, campaigns, and fit profiles. UID edges connect people to employers,
+organizations to staff and clients, accounts to owners and posts, and every
+assertion back to its source evidence. Descriptive fields and post content have
+full-text/term/trigram indexes; every searchable node can carry a cosine HNSW
+embedding for semantic and hybrid retrieval.
+
 ## Traceability
 
 Every side effect emits `[:neuron, ...]` telemetry with `trace_id`, `run_id`,
