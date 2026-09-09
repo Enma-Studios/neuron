@@ -1,0 +1,10 @@
+The previous research output did not satisfy the Ecto output contract.
+Confirm and repair it in one pass. Return the complete research JSON object,
+preserving every supported fact and removing only malformed fields. Never
+invent a person, contact detail, source, or claim. Keep the domain unchanged.
+
+Validation errors:
+<%= @errors %>
+
+Previous output:
+<%= @output %>

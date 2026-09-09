@@ -23,29 +23,69 @@ defmodule Neuron.Research do
              {:ok, drafts} <- draft_emails(domain, enriched, pages, opts) do
           result = normalize_result(domain, fit_profile, enriched, drafts, pages, opts)
 
-          with {:ok, _validated} <- Neuron.Schemas.validate_research(result) do
-            graph = graph_facts(result, pages, opts)
+          with {:ok, confirmed} <- confirm_research_output(result, opts) do
+            graph = graph_facts(confirmed, pages, opts)
 
             {:ok, outbox_id} =
               Neuron.Outbox.enqueue(run_id, :research_bundle, %{
                 domain: domain,
-                target_profile: result.target_profile,
-                organization: result.organization,
-                people: result.people,
-                leads: result.leads,
-                posts: result.posts,
-                drafts: result.drafts,
-                assertions: result.assertions,
+                target_profile: confirmed.target_profile,
+                organization: confirmed.organization,
+                people: confirmed.people,
+                leads: confirmed.leads,
+                posts: confirmed.posts,
+                drafts: confirmed.drafts,
+                assertions: confirmed.assertions,
                 graph: graph
               })
 
-            {:ok, Map.merge(result, %{run_id: run_id, outbox_id: outbox_id, sources: pages})}
+            {:ok, Map.merge(confirmed, %{run_id: run_id, outbox_id: outbox_id, sources: pages})}
           else
-            {:error, errors} -> {:error, {:invalid_research_result, errors}}
+            {:error, reason} -> {:error, reason}
           end
         end
       end
     )
+  end
+
+  defp confirm_research_output(result, opts) do
+    case Neuron.Schemas.validate_research(result) do
+      {:ok, _validated} ->
+        {:ok, result}
+
+      {:error, errors} ->
+        Neuron.Telemetry.emit(
+          [:research, :output_confirmation],
+          Neuron.Telemetry.trace_metadata(opts)
+          |> Map.put(:validation_errors, Neuron.Telemetry.summarize(errors))
+        )
+
+        with {:ok, prompt} <-
+               Neuron.Prompt.render_file(
+                 "confirm_output.eex",
+                 %{output: inspect(result), errors: inspect(errors)},
+                 opts
+               ),
+             {:ok, response} <-
+               model(opts).complete(
+                 [
+                   %{
+                     role: "system",
+                     content: "Confirm and repair the research JSON. Return JSON only."
+                   },
+                   %{role: "user", content: prompt}
+                 ],
+                 Keyword.put(opts, :task_id, "research:confirm_output")
+               ),
+             {:ok, parsed} <- decode_response(response),
+             sanitized <-
+               Neuron.Schemas.sanitize_research(Map.put(parsed, "domain", result.domain)),
+             {:ok, _validated} <- Neuron.Schemas.validate_research(sanitized) do
+          {:ok, Map.merge(result, sanitized)}
+        else
+          {:error, reason} -> {:error, {:invalid_research_result, errors, reason}}
+        end
+    end
   end
 
   defp discover(domain, opts) do
