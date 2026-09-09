@@ -1,184 +1,80 @@
-# Operations runbook
+# Operations
 
-See the [migration guide](migrations.md) for the complete versioning model,
-deployment sequence, and instructions for adding a migration.
+## Start and stop
 
-## Development boot
+Apply SQL and Dgraph migrations, then start with `iex -S mix`, `mix neuron.repl`, or your OTP release. Hosts start their own repo/Oban when ownership flags are disabled. Do not start a second named repo or Oban instance.
 
-```sh
-git clone git@github.com:Enma-Studios/neuron.git
-cd neuron
-mix deps.get
-mix compile
-iex -S mix
-```
+Use normal OTP shutdown for the release or `Application.stop(:neuron)` for a manually started application. Committed jobs and checkpoints remain in SQL. Temporary GenStage work is replayed by its Oban stage after a crash. Stopping the console/application does not delete pending jobs; they can execute on the next startup. Cancel a run explicitly if you intend to discard its work.
 
-Pinocchio is a private SSH dependency. Test the credential path before running
-Mix:
+## Retries, cancellation, and recovery
 
-```sh
-ssh -T git@github.com
-git ls-remote git@github.com:Enma-Studios/pinocchio.git main
-```
+Each built-in worker permits five attempts. Transient returned errors are Oban failures, and exceptions are re-raised. On the final ordinary error/exception the machine is marked failed. `Neuron.resume_run(id)` preserves a failed pipeline's stage index and checkpoint. A normal coordinator replans on retry.
 
-Keep `ZAI_API_KEY` and `BROWSER_USE_API_KEY` in a secret manager or process
-environment. Never commit them to `config/*.exs` or `mise.local.toml`.
+Lifeline rescues orphaned executing jobs after the configured interval. Because it uses elapsed time, configure `rescue_after` above valid job duration. A killed final attempt may become a discarded Oban job without running Neuron's error handler. `get_run/1`, `resume_run/1`, and `reconcile_run/1` detect a discarded or externally cancelled current-version worker and atomically mark its run failed. Keep Oban's job retention longer than the interval at which you inspect/reconcile such runs.
 
-## Dgraph
+Cancellation advances the machine version. Pending jobs become stale; an in-flight browser or HTTP call may finish but cannot commit a new state. Child runs remain independent and can be cancelled separately. A waiting API timeout also leaves the durable run active.
 
-The application uses Dgraph's gRPC endpoint at `localhost:9080` by default.
-The repeatable local check is:
+Dgraph stage writes resolve deterministic external IDs in one upsert. Replaying a write should update those nodes, not allocate a new copy. Old facts absent from a new extraction are not automatically deleted. SQL event/checkpoint transactions and remote Dgraph/HTTP calls cannot be one distributed transaction.
 
-```sh
-scripts/dgraph_integration.sh
-```
+## Telemetry
 
-The script starts a disposable Dgraph v25.4.0 container, waits for health,
-enables Dgraph for the test environment, applies the schema, writes a fact,
-queries it, and removes the container. To keep Dgraph running for manual
-inspection, run Podman yourself and set `NEURON_DGRAPH_ENDPOINT` and
-`NEURON_DGRAPH_TRANSPORT` before
-starting Neuron.
-
-When Dgraph is down, `Neuron.Dgraph` keeps the application alive with an
-unavailable connection. Graph-backed runs return a structured graph error;
-provider-isolated checks can pass `persist: false`.
-
-## Mnesia data
-
-Mnesia directories must be persistent in production. The application creates
-the schema table as `disc_copies` before creating Neuron tables. The configured
-default backend uses `mnesia_rocksdb` for all Neuron data tables. If the native
-adapter cannot load, startup and migration fail until the host environment is
-fixed.
-
-```sh
-export NEURON_DATA_DIR=/var/lib/neuron
-mix deps.get
-```
-
-Back up the configured data directory with the application stopped. Do not
-delete it during a running release. For disposable tests, use the test
-directory or a clean temporary directory.
-
-Run the Mnesia schema migration after provisioning a new data directory or
-upgrading Neuron:
-
-```sh
-mix neuron.mnesia.migrate --data-dir /var/lib/neuron
-```
-
-Apply the Dgraph predicates and indexes separately. The default gRPC listener
-is `localhost:9080`; select the HTTP listener at `localhost:8080` explicitly
-with `--transport http`:
-
-```sh
-mix neuron.dgraph.migrate
-mix neuron.dgraph.migrate --endpoint localhost:9080 --transport grpc
-mix neuron.dgraph.migrate --endpoint localhost:8080 --transport http
-```
-
-Migration execution is versioned. Each successful version is written to the
-`neuron_migration` Mnesia table, so rerunning a task applies pending versions
-and reconciles the current Dgraph schema. Inspect the applied records from IEx:
+Attach ordinary consumers with `:telemetry.attach_many/4`. Neuron installs no custom file logger. Neuron's span events preserve the existing prefix convention:
 
 ```elixir
-Neuron.Storage.migration_status()
-Neuron.Storage.migration_status(:dgraph)
-```
-
-## Browser health
-
-Check the executable selected by Neuron:
-
-```sh
-command -v chromium chromium-browser google-chrome
-echo "$CHROMIUM"
-```
-
-The configuration checks `CHROMIUM`, `/usr/bin/chromium`,
-`/snap/bin/chromium`, and `/usr/bin/chromium-browser`. A missing or failed
-local session produces a browser blockage event and invokes Browser Use when
-`BROWSER_USE_API_KEY` is available.
-
-The Pinocchio pool size is controlled by `NEURON_BROWSER_POOL_SIZE`. Keep it
-below the host's CPU/memory capacity; Browser Use sessions also consume remote
-provider capacity.
-
-## Live smoke checks
-
-```sh
-# Local Chromium
-mix run -e 'IO.inspect(Neuron.Browser.fetch("https://example.com", provider: :local))'
-
-# DuckDuckGo through Browser Use
-mix run -e 'IO.inspect(Neuron.Search.DuckDuckGo.search("Elixir OTP"))'
-
-# Full search -> explore -> score path
-mix run -e 'fit = %{requirements: [%{category: "industry", description: "software"}]}; IO.inspect(Neuron.Intelligence.discover("software companies", fit))'
-
-# Z.AI completion (glm-5.3-flash only)
-mix run -e 'IO.inspect(Neuron.Model.ZAI.complete([%{"role" => "user", "content" => "Say hello"}]))'
-```
-
-These commands use external services and may incur provider usage. A Z.AI
-HTTP 429 indicates account quota/resource-package state; the request is always
-for `glm-5.3-flash`.
-
-## Campaign operation
-
-```elixir
-campaign = %{
-  organization: "example.com",
-  field: "B2B cybersecurity",
-  offer: "Security assessment partnership",
-  target_roles: ["CTO", "VP Engineering"],
-  geography: ["US", "Canada"],
-  exclusions: ["personal sources", "free-mail addresses"],
-  lead_count: 3
-}
-
-{:ok, result} = Neuron.run(Neuron.Coordinator.Campaign, campaign, timeout: 300_000)
-result.leads
-```
-
-For URL-first intake, call `Neuron.Campaign.intake(%{url: url})` and show the
-returned questions. An `:approval_required` response contains distinct
-proposals; call `Neuron.Campaign.approve/2` after the operator selects them.
-`action: :different_campaign` discards URL proposals and starts the bounded
-intake again. `lead_count` and `max_attempts` control the off-agent unique
-lead counter.
-
-## Telemetry handlers
-
-Attach handlers before starting work when running a diagnostic shell:
-
-```elixir
-:telemetry.attach(
-  "neuron-debug",
-  [:neuron, :browser, :blocked],
-  fn event, measurements, metadata, _config ->
-    IO.inspect({event, measurements, metadata})
-  end,
+:telemetry.attach_many(
+  "my-neuron-consumer",
+  [
+    [:neuron, :fsm, :transition],
+    [:neuron, :start, :pipeline, :stage],
+    [:neuron, :stop, :pipeline, :stage],
+    [:neuron, :exception, :pipeline, :stage],
+    [:neuron, :browser, :attempt],
+    [:neuron, :browser, :blocked],
+    [:neuron, :research, :source_failed],
+    [:oban, :job, :start],
+    [:oban, :job, :stop],
+    [:oban, :job, :exception],
+    [:neuron, :repo, :query]
+  ],
+  &MyApp.Telemetry.handle_event/4,
   nil
 )
 ```
 
-For production, forward events to the service's normal Telemetry exporter.
-Keep payload capture disabled unless the destination is access-controlled.
+The default Ecto repo emits `[:neuron, :repo, :query]`; a host repo uses its own telemetry prefix. Oban reports job timing, attempts, exceptions, and its own queue/service events. Neuron reports transition versions, run/task IDs, stage names, browser attempts/failures, search results, prompt rendering, model decisions, embeddings, snapshots, and graph queries/writes. Span durations use Erlang native time units. Stop events mark completion of the function, including a returned error; exceptions have their own event.
 
-## Failure handling
+Run options contain a stable trace ID; run and task IDs correlate source/model activity. By default large telemetry payloads are summarized as hashes and byte sizes. `capture_payloads: true` is explicit. Business selection reasons belong in lead results; telemetry is not a promise to expose a model's private internal reasoning.
 
-- **Run failed:** inspect `Neuron.get_run/1` and `Neuron.events/1`; the error
-  and final state are durable.
-- **Agent failed:** inspect `Neuron.get_agent/1` and the parent run events.
-- **Browser blocked:** inspect provider attempt/block events; retry with
-  `provider: :browser_use` to isolate local Chromium problems.
-- **Graph write failed:** restore Dgraph connectivity and rerun the operation,
-  or use `persist: false` for a provider-isolated check.
-- **Z.AI 401/429:** rotate the secret or restore the Z.AI resource package.
-- **Output shape confirmation:** inspect `research:confirm_output` telemetry.
-  Neuron performs one repair pass with the Ecto errors and returns a structured
-  `:invalid_research_result` error if the response remains invalid.
-- **Native dependency build failure:** disable the relevant `NEURON_ENABLE_*`
-  flag and use the portable backend while fixing the build host.
+## History and export
+
+Rendered prompts and model request/response content are recorded with a run ID in `neuron_events`. Transition events contain state/version handovers. This SQL history persists independently of telemetry handlers and Oban's finished-job pruning. `Neuron.events(id)` decodes events in order. Model/tool history payloads include `data` and correlation `metadata`.
+
+```elixir
+run = Neuron.get_run(id)
+transcript = %{run: run, events: Neuron.events(id)}
+File.write!("/tmp/nyx-session-transcript", inspect(transcript, pretty: true, limit: :infinity))
+```
+
+A campaign's research attempts use IDs `<campaign-run-id>-attempt-<number>`; export their events too for the entire research history. SQL checkpoints preserve in-progress outputs when graph persistence fails. Supply credentials through application configuration, not run options stored in SQL. Apply your organization's retention/access controls to the SQL database and exports.
+
+## Checks
+
+`mix test` uses real SQLite and Oban with manual queue draining and explicit external-service fixtures. It tests FSM transitions, stale jobs, cancellation, output retention, stage checkpoints, rollback, failed-stage resumption, GenStage cleanup, schema validation, and domain rules. Tests migrate first through the Mix alias.
+
+`NEURON_DGRAPH_ENABLED=true mix test --include integration test/neuron_dgraph_integration_test.exs` requires the configured gRPC service and verifies repeat writes/querying. `scripts/dgraph_integration.sh` starts a temporary Podman instance; choose distinct host ports when your local Dgraph is already running:
+
+```sh
+NEURON_DGRAPH_HTTP_PORT=18080 NEURON_DGRAPH_GRPC_PORT=19080 bash scripts/dgraph_integration.sh
+```
+
+The same runtime suite can use a separately configured Postgres repo:
+
+```sh
+bash scripts/postgres_integration.sh
+# Or use an existing disposable test database:
+NEURON_TEST_POSTGRES_URL=postgres://user:password@localhost/neuron_test mix test
+```
+
+The Podman script creates and removes its own temporary Postgres container. The suite verifies the same Ecto migration and FSM operations with Oban's Basic engine.
+
+A live research run additionally requires functioning ZAI, Browser Use, Chromium, and an embedding service. Unit fixtures do not verify those services. Infrastructure errors remain errors and must be fixed in the environment.

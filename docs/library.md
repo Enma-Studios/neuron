@@ -1,87 +1,72 @@
-# Library guide
+# Library API
 
-Neuron is an OTP application intended to sit behind a Phoenix controller
-plane. Start the application normally and keep request state in the public
-run APIs; Mnesia and Dgraph are managed by the supervision tree.
+## Runs
 
-## Public run API
+- `Neuron.start_run(profile, input, opts \\ [])` returns `{:ok, id}` after the initial machine, event, and job commit.
+- `Neuron.run(profile, input, opts \\ [])` starts and awaits a run.
+- `Neuron.get_run(id)` returns saved input, profile, state (`status`), version, output (`result`), and error. Available lead/profile fields are also exposed at the top level. Missing IDs raise `Ecto.NoResultsError`.
+- `Neuron.await_run(id, timeout \\ 120_000)` returns `{:ok, snapshot}`, `{:needs_input, snapshot}`, `{:error, snapshot}`, or `{:error, :timeout}`. Waiting polls SQL; use asynchronous IDs from web requests.
+- `Neuron.provide_run(id, input)` merges supplied answers and resumes a run waiting for input.
+- `Neuron.cancel_run(id)` commits cancellation. Already-running external requests may finish, but their stale version cannot advance the run.
+- `Neuron.resume_run(id)` resumes a failed pipeline from its checkpoint or replans an ordinary coordinator.
+- `Neuron.reconcile_run(id)` reflects a discarded/cancelled current worker job as a failed run; inspection and resumption also perform this reconciliation.
+- `Neuron.events(id)` returns SQL history ordered by event ID.
+- `Neuron.list_runs()` returns saved machine snapshots. For large deployments, query the repository with application-specific pagination instead.
+- `Neuron.spawn_agent(parent_id, role, worker, input, opts \\ [])` starts a separately durable delegated worker; `get_agent/1` and `cancel_agent/1` use the run APIs.
 
-`Neuron.start_run/3` starts an asynchronous `gen_statem` and returns
-`{:ok, id}`. `Neuron.get_run/1`, `Neuron.list_runs/0`, and `Neuron.events/1`
-inspect durable state. `Neuron.cancel_run/1` stops a live run and
-`Neuron.resume_run/1` re-admits an unfinished one.
+## Coordinator profiles
 
-`Neuron.run/3` starts a run and waits for a terminal response. Its response
-contains `result` and exposes `leads`, `people`, `posts`, `organization`,
-`campaign`, and `target_profile` at the top level when available.
-`Neuron.await_run/2` provides the same envelope for an existing ID.
-`Neuron.provide_run/2` supplies answers to a run paused in `:needs_input`.
+Implement `Neuron.Coordinator` with `plan(input, context)` and `run(plan, context)`. Both return `{:ok, value}` or `{:error, reason}`. Planning can additionally return `{:needs_input, details}` or `{:approval_required, details}`. Context includes `run_id`, `options`, and `plan`.
 
-## Campaign API
+```elixir
+defmodule MyProfile do
+  @behaviour Neuron.Coordinator
+  def plan(input, _context), do: {:ok, input}
+  def run(plan, _context), do: {:ok, %{leads: plan.leads}}
+end
+```
 
-`Neuron.Campaign.questions/0` returns exactly eight bounded intake questions.
-`Neuron.Campaign.question_prompt/1` formats only unanswered required fields.
-`Neuron.Campaign.intake/2` accepts answers or a URL. A URL is browsed,
-converted to Markdown, and passed to Z.AI for extraction. Unknown fields are
-returned as prompts. Multiple distinct campaign proposals return
-`{:approval_required, details}`; approve them with `Neuron.Campaign.approve/2`
-and run several with `Neuron.Campaign.run_many/2`.
+For a durable multistep pipeline, also export `stages/0` (ordered atom names) and `stage/3`. Each stage receives its predecessor's saved data and run options and returns `{:ok, next_data}` or `{:error, reason}`. The final stage's value becomes `result`. `Neuron.Coordinator.LeadGeneration` demonstrates the production contract. Stage code must tolerate replay; a checkpoint cannot atomically commit a remote HTTP request.
 
-`Neuron.Campaign.run/2` owns the requested unique lead count outside the model.
-It runs independent research attempts, deduplicates by company email, profile
-URL, or person name, and returns `{:ok, %{status: :target_met, leads: ...}}`.
-`max_attempts` bounds retries; an unmet target returns partial leads and errors.
-`Neuron.Coordinator.Campaign` exposes this flow through `gen_statem`.
+Delegated workers implement `Neuron.Agent.Worker.run(input, context)`. They are ordinary separately queued jobs. Parent cancellation does not recursively cancel independent child runs.
 
-## Research and intelligence
+## FSM definitions
 
-`Neuron.Research.run/3` composes DuckDuckGo discovery, source ranking, browser
-fetches, Htmd snapshots, Z.AI extraction, re-enrichment, outreach drafting,
-Ecto validation, embeddings, and a synchronous Dgraph graph write.
+```elixir
+defmodule ReviewMachine do
+  use Neuron.FSM
+  state :waiting
+  state :approved
+  state :expired
+  transition :approve, from: :waiting, to: :approved, guard: :authorized?
+  transition :expire, from: :waiting, to: :expired
+  def authorized?(_data, payload), do: payload[:approved] == true
+end
 
-`Neuron.Intelligence.explore/3` processes one URL and a fit decision;
-`explore_many/3` bounds parallel URLs; `discover/3` searches and explores
-returned links. `Neuron.Lead.evaluate/3` returns score, selection, reasons,
-and matched evidence. Requirements contribute 80% and geography 20%.
+{:ok, machine} = Neuron.FSM.create(ReviewMachine, %{})
+Neuron.FSM.allowed_events(machine.id) # candidate events; guards evaluate on send
+Neuron.FSM.schedule_event(machine.id, :expire, 86_400)
+Neuron.FSM.send(machine.id, :approve, %{approved: true}, version: 0)
+```
 
-## Providers
+A `worker:` option schedules that Oban worker on transition. `after: {5, :seconds}` or `{24, :hours}` delays worker execution. Workers receive `machine_id` and `version` in their JSON args. Implement the same version check before work and conditional `send/4` after work as the built-in workers. `create/3` can schedule the initial worker with `worker:`. Guards are named functions on the definition, not closures. States must be declared before use; invalid definitions fail compilation.
 
-`Neuron.Browser.fetch/2` tries local Pinocchio/Chromium first and falls back to
-Browser Use on blockage. `Neuron.Search.DuckDuckGo.search/2` always uses
-Browser Use for DuckDuckGo HTML. `Neuron.Model` and `Neuron.Embedding` are
-provider behaviours; `Neuron.Model.ZAI` is the supported live model and
-`Neuron.Model.Stub` is used by tests. Browser adapters implement `fetch/2`.
+Invalid events return `{:error, {:invalid_event, state, event}}`; stale versions return `{:error, :stale}`; rejected guards return `{:error, :guard_rejected}`. `state/1` returns the persisted state string; `data/1` decodes a fetched machine's operational payload.
 
-## Snapshots, schemas, and graph
+## Campaigns and research
 
-`Neuron.Snapshot.from_html/2` removes executable/boilerplate markup and returns
-Htmd Markdown plus a SHA-256 hash and extraction version. `Neuron.Schemas`
-contains Ecto embedded contracts for social accounts, people, leads, research
-results, and campaign results. `sanitize_research/1`, `validate_research/1`,
-and `validate_campaign_result/1` normalize and enforce output shapes.
+`Neuron.Campaign.intake/2` normalizes user details and optionally scrapes a website. `questions/0` provides the eight-field intake definition. Missing details and multiple campaign proposals are explicit tagged results. `approve/2` accepts all or zero-based selection indexes. `run_many/2` runs approved campaigns separately.
 
-If normalized research fails validation, the model receives the output and
-changeset errors through `confirm_output.eex` for one bounded repair pass.
+After explicit proposal approval, start `Neuron.Coordinator.Campaign` with `%{approved_campaign: campaign}` to validate the approved brief without inferring new proposals. Callers are responsible for presenting proposals and obtaining that approval.
 
-`Neuron.Graph.Schema` versions the Dgraph ontology; `Neuron.Graph.upsert/2`
-writes facts and `query/3` executes DQL. `Neuron.GraphSearch` provides
-lexical, semantic, hybrid, profile, and fit-profile helpers. Organizations,
-people, posts, social accounts, clients, capabilities, requirements,
-leniencies, assertions, snapshots, campaigns, and leads are graph entities.
+`Neuron.Campaign.run/2` counts unique contacts outside the model, retains failures, and stops when the target is met or its attempt budget is exhausted. `Neuron.Research.run(domain, fit_profile, opts)` starts/awaits a durable six-stage research run. An explicit `run_id:` identifies an existing attempt on replay. Research produces organization, people, posts, leads, drafts, target profile, and source URLs; `Neuron.Schemas` validates shapes with embedded Ecto schemas and changesets.
 
-## Durability and extension
+`Neuron.Intelligence.explore/3` is a lower-level browser/snapshot/embedding/scoring API. `explore_many/3` and `discover/3` operate over multiple sources. Use the coordinator profile to run this work durably.
 
-`Neuron.Storage` owns Mnesia runs, agents, operations, ordered events, and
-migration records. Research and campaign workflows write graph facts directly
-through `Neuron.Graph.upsert/2`; `Neuron.Recovery` re-admits unfinished runs
-when enabled.
+## Boundaries
 
-Implement `Neuron.Coordinator` (`plan/2`, `run/2`) for a workflow and
-`Neuron.Agent.Worker` (`run/2`) for delegated work. Use `Neuron.spawn_agent/5`
-for parallel or nested agents. Every operation carries run, agent, task, and
-trace identifiers.
+`Neuron.Graph.upsert/2` writes domain facts with stable external identities; `query/3` accepts DQL and variables. `Neuron.Graph.Schema.definition/0` exposes the complete domain schema. Dgraph owns full-text/vector querying and relationship traversal.
 
-Attach ordinary Telemetry consumers to `[:neuron, ...]` events. Payloads are
-summarized by default. `session_transcript: path` or
-`NEURON_SESSION_TRANSCRIPT` records model-visible prompts, responses, and tool
-calls; hidden chain-of-thought is never persisted.
+`Neuron.Browser.fetch/2`, `Neuron.Search.web/2`, `Neuron.Snapshot.from_html/2`, `Neuron.Embedding`, and `Neuron.Model` define the source/model boundaries. `Neuron.Prompt.render/3` and `render_file/3` render EEx with `@assign` values and persist raw rendered prompts for correlated runs. Prompt files ship in the application's `priv` directory.
+
+`Neuron.ContactPolicy` supplies evidence/contact rules and advisory source preferences. `Neuron.Lead.evaluate/3` returns explicit selection reasons and criterion evidence. These rules are configurable application logic, not proof that every extracted assertion is true.

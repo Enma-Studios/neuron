@@ -1,105 +1,35 @@
 # Architecture
 
-Neuron is an OTP boundary between transient agent execution and durable domain
-knowledge. The application owns processes and recovery; Dgraph owns facts
-that are useful to search and relate across runs.
+Neuron is an OTP application containing a repository (unless host managed), Oban (unless host managed), the Dlex connection owner, and a dynamic supervisor for per-stage GenStage trees.
 
-## Supervision tree
+## Durable execution
 
-```text
-Neuron.Supervisor
-├── Neuron.Storage       Mnesia schema, tables, transactions
-├── Neuron.Dgraph        Dlex connection boundary
-├── Neuron.RunRegistry   unique run and agent names
-├── Neuron.RunSupervisor dynamic coordinator processes
-├── Neuron.AgentSupervisor dynamic delegated workers
-└── Neuron.Recovery      re-admission of unfinished runs
-```
+`Neuron.FSM` provides a small definition DSL. A machine has a definition module, state, monotonically increasing version, and serialized data. `send/4` resolves an event against the current state, applies a named guard, conditionally updates the row using its previous version, appends a SQL event, and inserts the next Oban job in the same transaction. Competing updates cannot both commit the same version. Transaction failures propagate; Oban retries job failures.
 
-Pinocchio is an OTP dependency. Its own supervisor owns the browser pool;
-Neuron does not duplicate that pool. A Browser Use fallback session is
-provider-owned and is stopped after the fetch.
+The job records the machine ID and transition version. Workers check the version before execution and again when advancing. A stale job returns successfully without advancing the machine. State transitions emit telemetry after their transaction succeeds.
 
-## Run lifecycle
+This is an application-specific durable FSM, not an implementation of every `gen_statem` feature. There are no process mailboxes, state timeouts, event postponement, or synchronous actor calls. Delayed workers use a transition's `after:` option. Version-bound delayed events use `schedule_event/3`.
 
-`Neuron.Run` uses `:gen_statem` state functions:
+## Queues and stages
 
-```text
-queued → planning → executing → complete
-                  └───────────→ failed
-queued/planning/executing ─────→ cancelled
-planning ──────────────────────→ needs_input → planning
-```
+`orchestrators` executes ordinary coordinator planning/execution and campaign collection. `agents` executes pipeline planning, stages, and timers. Separating those queues allows a campaign job to await a research child without blocking its planner. Both queues must be configured by a host.
 
-Each transition writes the run record and an event before moving on. Model,
-browser, embedding, and coordinator operations are recorded in the operation
-table when they are part of a run. Delegated workers use the same pattern and
-carry `run_id`, `agent_id`, and optional `parent_id`.
+Research runs six stages: discovery, source browsing, extraction, reconciliation/enrichment, drafting/validation, and graph persistence. Each successful stage replaces its saved checkpoint and queues the next stage. Source workers run under a temporary supervised GenStage tree, with demand of one per mapper and configurable concurrency. Results may arrive in any order. A worker crash propagates to the Oban stage; cleanup terminates the tree. Failed individual pages are traced and excluded, while failure to search or obtain any pages fails the stage.
 
-## Data boundaries
+Oban retries a failed stage up to five attempts using its backoff. An ordinary exception on the last attempt marks the FSM failed and is re-raised for Oban's failure record. `resume_run/1` queues the saved pipeline stage. Ordinary coordinator runs restart planning when resumed.
 
-Mnesia contains operational state: runs, agents, operations, ordered events,
-and migration records. Dgraph contains organizations, people, posts, accounts,
-requirements, evidence, campaign profiles, and other domain facts. Graph
-writes happen synchronously so the returned result reflects the persistence
-operation that actually completed.
+## Recovery and side effects
 
-The graph schema is versioned in `Neuron.Graph.Schema`. Schema application is
-idempotent for the declared predicates and types; deployment tooling should
-run it against the target Dgraph endpoint before running graph-backed research.
+Execution is at least once. A crash after an external request but before its checkpoint can repeat the request. Version checks prevent stale output from changing the FSM; they cannot undo a request already sent. Dgraph writes use stable external identities with an `@upsert` index, resolving all blank-node references in a single mutation. New SQL code does not migrate or deduplicate pre-existing Dgraph nodes that lack those identities.
 
-Campaign orchestration sits above individual research attempts. Intake may
-pause for user answers or approval of multiple URL-derived proposals. The
-campaign layer owns the requested lead count, deduplicates attempts, and
-writes a Campaign node linked to selected leads.
+Oban's configured Lifeline handles orphaned executing jobs; configure its rescue age above your maximum legitimate job duration. A process killed during its final attempt can be discarded by Oban before application failure handling runs. `get_run/1` and `resume_run/1` reconcile that discarded job into a failed run using its version before returning or retrying. SQLite is for local iteration; configure Postgres for distributed operation.
 
-## End-to-end discovery
+## Data ownership
 
-`Neuron.Intelligence.discover/3` composes the providers as follows:
+Dgraph is the canonical domain store. SQL retains operational copies of intermediate inputs and outputs necessary for replay, plus raw prompts, model responses, decisions, and transition events. It is not a second domain query database. Serialized execution data must not contain PIDs, ports, references, or functions. Keep callback module names available across deployments and drain incompatible jobs before changing payload shapes.
 
-```text
-query
-  │
-  ▼
-DuckDuckGo HTML search ── Browser Use provider
-  │
-  ▼
-ranked URLs
-  │  Task.async_stream (bounded concurrency)
-  ▼
-local Chromium / Pinocchio ── on blockage ── Browser Use / Pinocchio
-  │
-  ▼
-Htmd Markdown snapshot → embedding → transparent fit decision → graph upsert
-```
+The graph describes organizations, employment, people, social accounts, posts/authors, sources/snapshots, requirements, geographies, client profiles, capabilities, assertions, campaigns, and leads. Full-text predicates and vector indexes are defined by versioned Dgraph migrations. Reconciliation currently combines evidence through model prompts and stable writes; it does not automatically retract old relationships absent from a later extraction.
 
-The search provider is deliberately separate from the Z.AI model provider.
-Z.AI completion remains available for agent reasoning and is pinned to
-`glm-5.3-flash`; web search is browser-backed DuckDuckGo.
+## Embedding
 
-## Fit decision model
-
-`Neuron.Lead.evaluate/3` produces a decision map rather than a bare boolean.
-For each requirement it records the criterion, match status, and excerpt. It
-adds a geography decision and a final threshold explanation. The current
-score is:
-
-```text
-score = (matched_requirements / total_requirements) * 0.8
-      + geography_match * 0.2
-```
-
-An empty requirement list scores the requirement component as `1.0`, and an
-empty preferred geography list scores the geography component as `1.0`.
-
-## Trace context
-
-Callers can supply `trace_id`, `run_id`, `agent_id`, `task_id`,
-`operation_id`, and `attempt` as keyword options. Boundary modules preserve
-these fields in telemetry and database transaction spans. Payloads are
-summarized by default, allowing trace correlation without recording secrets or
-large HTML bodies in the event stream.
-
-Research output is checked with Ecto after normalization. A failed shape check
-causes one model confirmation/repair pass with the validation errors before the
-run can write to Dgraph.
+A host supplies an Ecto repo and an Oban instance configured against that same repo. No Phoenix modules or dependencies are required. HTTP controllers can call `start_run/3`, store the returned ID, and poll `get_run/1` or subscribe to telemetry in their own application.
