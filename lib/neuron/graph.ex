@@ -21,7 +21,7 @@ defmodule Neuron.Graph do
         )
 
       if conn do
-        payload = %{"set" => facts}
+        payload = %{set: facts}
 
         case apply(Dlex, :mutate, [conn, payload, [return_json: true]]) do
           {:ok, _} -> :ok

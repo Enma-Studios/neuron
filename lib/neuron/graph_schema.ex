@@ -7,19 +7,47 @@ defmodule Neuron.Graph.Schema do
 
   def definition do
     """
-    type Entity { name domain profile_url description }
-    type Source { url title fetched_at content_hash }
-    type Snapshot { markdown content_hash extraction_version }
-    type Evidence { excerpt confidence observed_at }
-    type Assertion { predicate confidence observed_at }
+    type Entity {
+      name: string
+      domain: string
+      profile_url: string
+      description: string
+    }
+    type Source {
+      url: string
+      title: string
+      fetched_at: datetime
+      content_hash: string
+    }
+    type Snapshot {
+      markdown: string
+      content_hash: string
+      extraction_version: int
+    }
+    type Evidence {
+      excerpt: string
+      confidence: float
+      observed_at: datetime
+    }
+    type Assertion {
+      predicate: string
+      confidence: float
+      observed_at: datetime
+    }
     name: string @index(term, trigram) .
     domain: string @index(exact) .
     profile_url: string @index(exact) .
     description: string @index(fulltext) .
     url: string @index(exact) .
     title: string @index(term) .
+    fetched_at: datetime .
     markdown: string @index(fulltext) .
     content_hash: string @index(exact) .
+    extraction_version: int .
+    excerpt: string @index(fulltext) .
+    confidence: float .
+    observed_at: datetime .
+    predicate: string .
     embedding: float32vector @index(hnsw(metric:"cosine")) .
     body: string @index(fulltext) .
     """
