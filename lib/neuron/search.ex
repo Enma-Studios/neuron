@@ -1,12 +1,12 @@
 defmodule Neuron.Search do
   @moduledoc "Search providers used by the intelligence exploration pipeline."
 
+  # Every engine here must return public results to a signed-out cloud
+  # browser. Google, LinkedIn, X and Reddit do not, so they ship switched
+  # off; see `docs/configuration.md`.
   @default_engines [
     Neuron.Search.DuckDuckGo,
-    Neuron.Search.Google,
-    Neuron.Search.Yandex,
-    Neuron.Search.LinkedIn,
-    Neuron.Search.X
+    Neuron.Search.Yandex
   ]
 
   @doc """

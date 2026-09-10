@@ -64,7 +64,11 @@ All browsing runs on Browser Use cloud browsers; there is no local browser provi
 
 ## Search engines and the browser fleet
 
-Searches run on every enabled engine through `:neuron, :search, :engines` (DuckDuckGo, Google, Yandex, LinkedIn, X, and Reddit by default). The model tailors each query to its platform before anything runs: LinkedIn, X, and Reddit get native, operator-free queries, while the keyword engines keep operators such as `site:` and quoted phrases, aimed at pages a prospective buyer publishes itself.
+Searches run on every enabled engine through `:neuron, :search, :engines`. **The default is DuckDuckGo and Yandex**, the two that return public results to a signed-out cloud browser. The model tailors each query to its platform before anything runs: LinkedIn, X, and Reddit get native, operator-free queries, while the keyword engines keep operators such as `site:` and quoted phrases, aimed at pages a prospective buyer publishes itself.
+
+`Neuron.Search.Google`, `Neuron.Search.LinkedIn`, `Neuron.Search.X` and `Neuron.Search.Reddit` ship switched off. They remain supported and can be added back to the list, but each needs something the default configuration does not have. Google redirects every query from Browser Use cloud addresses to its `/sorry/` bot check, measured seven times out of seven in one run and four out of four in another, so it contributes nothing and is reported as a skipped engine on every query; it may work from an address it serves results to, which a local browser provider may be (`neuron-02`). Reddit redirects cloud datacenter addresses to a login wall and wants residential proxies. LinkedIn and X need a logged-in `BROWSER_USE_PROFILE_ID`, with the risk described below.
+
+Engines are module names, not atoms: `Neuron.Search.DuckDuckGo`, never `:duckduckgo`. An unrecognised entry is not an engine and is silently absent from every round.
 
 `BROWSER_USE_PROFILE_ID` is a supported optional setting and is unset by default. Setting it sends a logged-in Browser Use profile to every new cloud session, which is what native LinkedIn and X search needs. **It is a logged-in path and it carries account and terms-of-service risk to whoever owns that profile.** It exists for standalone operation by the profile's own owner. An embedding host does not set it: the Neureni host runs the public engines only, with no profile, and resolves people and contacts through its own provider waterfall.
 
