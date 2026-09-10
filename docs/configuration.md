@@ -94,6 +94,6 @@ Do not mix embedding models or dimensions in an existing graph index: re-ingest/
 
 Campaign run options: `max_rounds: 12`, `max_queries: 50`, `searches_per_round: 8`, `max_pages: 96`, `batch_size: 8`, `budget_seconds: 7200`, and `harvest_concurrency: 4`. The time budget stops new scheduling; in-flight batches finish. The requested lead count is a target, not a truncation limit.
 
-Selection options: `selection_threshold: 0.5` and `weights` (market 0.35, role 0.20, geography 0.15, evidence 0.15, freshness 0.15). Market relevance combines lexical fit and embedding similarity equally. Freshness decays with a 90-day half-life. Contact evidence and explicit exclusions are hard eligibility checks, independent of score.
+Selection options: `require_contact_channel: true`, `selection_threshold: 0.5` and `weights` (market 0.35, role 0.20, geography 0.15, evidence 0.15, freshness 0.15). Market relevance combines lexical fit and embedding similarity equally. Freshness decays with a 90-day half-life. Contact evidence and explicit exclusions are hard eligibility checks, independent of score.
 
 Contact preference is separate from fit scoring: eligible company-email leads rank before social-only leads. `:neuron, :selection` accepts `channel_order` (default `["email", "linkedin", "x", "social"]`). Email remains the primary channel. Every returned lead has its preferred-channel draft and all verified channel options.

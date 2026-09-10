@@ -56,6 +56,7 @@ defmodule Neuron.Schemas.Lead do
     field(:evidence, {:array, :map}, default: [])
     field(:title, :string)
     field(:email, :string)
+    field(:observed_email, :string)
     field(:fit_score, :float)
     field(:reason, :string)
     field(:email_subject, :string)
@@ -80,6 +81,7 @@ defmodule Neuron.Schemas.Lead do
         :evidence,
         :title,
         :email,
+        :observed_email,
         :fit_score,
         :reason,
         :email_subject,
@@ -137,13 +139,24 @@ defmodule Neuron.Schemas.CampaignResult do
       leads = get_field(changeset, :leads, [])
       changeset = validate_required(changeset, [:returned_count, :summary, :stop_reason])
 
+      # A lead always needs its identity, its employer and its evidence. A
+      # draft is only required where a channel was actually observed: with
+      # no channel there is no recipient, and inventing one is the thing
+      # this rule exists to prevent.
       valid =
         Enum.all?(leads, fn lead ->
           is_binary(lead.person_id) and is_binary(lead.person_uid) and
-            is_binary(lead.organization) and lead.contact_channels != [] and
+            is_binary(lead.organization) and
             (is_nil(lead.email) or Neuron.Selection.company_email?(lead.email, lead.organization)) and
+            (is_nil(lead.observed_email) or
+               Neuron.Selection.company_email?(lead.observed_email, lead.organization)) and
             lead.evidence_urls != [] and lead.evidence != [] and
-            not is_nil(lead.outreach) and lead.outreach.channel == lead.preferred_channel
+            if lead.contact_channels == [] do
+              is_nil(lead.outreach) and is_nil(lead.preferred_channel) and
+                is_nil(lead.observed_email)
+            else
+              not is_nil(lead.outreach) and lead.outreach.channel == lead.preferred_channel
+            end
         end)
 
       cond do

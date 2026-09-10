@@ -5,6 +5,7 @@ Channel rules:
 - linkedin: a connection note, at most 300 characters. Professional, personal and low-pressure; establish relevance and invite connection rather than sending a full sales pitch. No subject.
 - x: a private message draft, at most 500 characters. Conversational, reference professional context and ask permission to share details. Do not assume DMs are open or produce a public reply. No subject.
 - social: a brief private introduction, at most 600 characters, suited to the named platform. Do not assume messaging is available. No subject.
+- a lead whose contact_channels is empty has no observed contact channel: give its reason and set channel, subject and body to null. Never invent a recipient or a channel for it.
 GitHub is not a prospecting or outreach channel.
 Cover exactly the supplied people. Scores, contacts and identities are immutable. Explain uncertainty; semantic similarity indicates relevance, not factual proof. These are drafts only; nothing is sent.
 Seller: <%= @seller %>

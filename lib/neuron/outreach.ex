@@ -32,6 +32,31 @@ defmodule Neuron.Outreach do
         end)
   end
 
+  @doc """
+  Attach the model's reason and, where there is somewhere to send it, its
+  draft.
+
+  A lead with no observed contact channel has no recipient, so there is no
+  draft to validate and nothing the model returned as a channel is kept. An
+  invented recipient must never reach a caller; the selection reason still
+  must.
+  """
+  def confirm(draft, %{contact_channels: []} = lead) do
+    case draft["reason"] do
+      reason when is_binary(reason) and byte_size(reason) > 0 ->
+        {:ok,
+         Map.merge(lead, %{
+           reason: reason,
+           outreach: nil,
+           email_subject: nil,
+           email_body: nil
+         })}
+
+      _ ->
+        {:error, {:invalid_channel_draft, :missing_reason}}
+    end
+  end
+
   def confirm(draft, lead) do
     [preferred | _] = lead.contact_channels
 
