@@ -1,7 +1,7 @@
 defmodule Neuron.KnowledgeTest do
   use ExUnit.Case, async: true
 
-  test "claims require exact source evidence and reject invented email addresses" do
+  test "claims require exact source evidence and drop invented email addresses" do
     document = %{
       url: "https://company.example/team",
       markdown: "Ada leads engineering. https://linkedin.com/in/ada"
@@ -18,13 +18,14 @@ defmodule Neuron.KnowledgeTest do
 
     assert {:ok, [_]} = Neuron.Knowledge.validate_claims(%{"claims" => [claim]}, document)
 
-    assert {:error, _} =
+    # Flawed claims are dropped while the rest of the batch survives.
+    assert {:ok, []} =
              Neuron.Knowledge.validate_claims(
                %{"claims" => [Map.put(claim, "excerpt", "invented")]},
                document
              )
 
-    assert {:error, _} =
+    assert {:ok, []} =
              Neuron.Knowledge.validate_claims(
                %{
                  "claims" => [
@@ -34,7 +35,49 @@ defmodule Neuron.KnowledgeTest do
                document
              )
 
-    assert {:error, _} = Neuron.Knowledge.validate_claims(%{"claims" => [123]}, document)
+    assert {:ok, []} =
+             Neuron.Knowledge.validate_claims(%{"claims" => [123]}, document)
+  end
+
+  test "organizations may be identified by their bare domain" do
+    document = %{
+      url: "https://efuturesworld.com/",
+      markdown: "Software Development Company in Sri Lanka | EFutures"
+    }
+
+    claim = %{
+      "entity_type" => "Organization",
+      "identity" => "efuturesworld.com",
+      "predicate" => "description",
+      "value" => "Software development company in Sri Lanka",
+      "excerpt" => "Software Development Company in Sri Lanka | EFutures",
+      "source_url" => document.url
+    }
+
+    assert {:ok, [_]} = Neuron.Knowledge.validate_claims(%{"claims" => [claim]}, document)
+  end
+
+  test "a flawed claim does not discard its valid siblings" do
+    document = %{
+      url: "https://company.example/team",
+      markdown: "Ada leads engineering. https://linkedin.com/in/ada"
+    }
+
+    good = %{
+      "entity_type" => "Person",
+      "identity" => "https://linkedin.com/in/ada",
+      "predicate" => "title",
+      "value" => "Engineering lead",
+      "excerpt" => "Ada leads engineering.",
+      "source_url" => document.url
+    }
+
+    bad = %{"entity_type" => "Person", "identity" => "not a url or claim"}
+
+    assert {:ok, [kept]} =
+             Neuron.Knowledge.validate_claims(%{"claims" => [bad, good]}, document)
+
+    assert kept[:identity] == "https://linkedin.com/in/ada"
   end
 
   test "user assertions outrank newer scraped assertions" do

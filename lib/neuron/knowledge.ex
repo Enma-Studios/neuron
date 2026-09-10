@@ -91,43 +91,76 @@ defmodule Neuron.Knowledge do
          do: {:ok, snapshot_id}
   end
 
+  @doc """
+  Keep only claims with exact in-document evidence. A claim that fails any
+  evidence check is dropped, not fatal: one flawed claim must not discard
+  the rest of a page. An all-invalid page yields an empty claim list, which
+  is a valid outcome — the snapshot is already saved as evidence.
+  """
   def validate_claims(%{"claims" => claims}, document) when is_list(claims) do
-    Enum.reduce_while(claims, {:ok, []}, fn attrs, {:ok, acc} ->
-      with true <- is_map(attrs),
-           {:ok, claim} <- Neuron.Contracts.validate(Neuron.Contracts.Claim, attrs),
-           true <- claim.source_url == document.url,
-           true <- String.contains?(document.markdown, claim.excerpt),
-           true <- identity_supported?(claim, document),
-           true <-
-             claim.predicate != "email" or
-               String.contains?(String.downcase(claim.excerpt), String.downcase(claim.value)),
-           true <-
-             claim.entity_type == "Organization" or
-               String.starts_with?(claim.identity, ["https://", "http://"]) do
-        {:cont, {:ok, [Neuron.Contracts.plain(claim) | acc]}}
-      else
-        error -> {:halt, {:error, {:unsupported_claim, attrs, error}}}
-      end
-    end)
+    {kept, dropped} =
+      Enum.split_with(claims, fn attrs ->
+        match?({:ok, _}, supported_claim(attrs, document))
+      end)
+
+    if dropped != [] do
+      Neuron.Telemetry.emit(
+        [:knowledge, :claims_dropped],
+        %{document: document.url, kept: length(kept), dropped: length(dropped)}
+      )
+    end
+
+    kept_claims =
+      Enum.map(kept, fn attrs ->
+        {:ok, claim} = supported_claim(attrs, document)
+        Neuron.Contracts.plain(claim)
+      end)
+
+    {:ok, kept_claims}
   end
 
   def validate_claims(_, _), do: {:error, :expected_claims_array}
 
-  defp identity_supported?(claim, document) do
-    if not valid_http_url?(claim.identity) do
-      false
+  defp supported_claim(attrs, document) when is_map(attrs) do
+    with {:ok, claim} <- Neuron.Contracts.validate(Neuron.Contracts.Claim, attrs),
+         true <- claim.source_url == document.url,
+         true <- String.contains?(document.markdown, claim.excerpt),
+         true <- identity_supported?(claim, document),
+         true <-
+           claim.predicate != "email" or
+             String.contains?(String.downcase(claim.excerpt), String.downcase(claim.value)),
+         true <-
+           claim.entity_type == "Organization" or
+             String.starts_with?(claim.identity, ["https://", "http://"]) do
+      {:ok, claim}
     else
-      case claim.entity_type do
-        "Organization" ->
-          domain(claim.identity) == domain(document.url) or
-            String.contains?(document.markdown, claim.identity)
-
-        _ ->
-          canonical_url(claim.identity) == canonical_url(document.url) or
-            String.contains?(document.markdown, claim.identity)
-      end
+      false -> {:error, :unsupported_claim}
+      error -> error
     end
   end
+
+  defp supported_claim(_, _document), do: {:error, :unsupported_claim}
+
+  defp identity_supported?(claim, document) do
+    case claim.entity_type do
+      # Organizations are identified by their domain, bare or as a URL.
+      "Organization" ->
+        domain_identity?(claim.identity) and
+          (domain(claim.identity) == domain(document.url) or
+             String.contains?(document.markdown, claim.identity))
+
+      _ ->
+        valid_http_url?(claim.identity) and
+          (canonical_url(claim.identity) == canonical_url(document.url) or
+             String.contains?(document.markdown, claim.identity))
+    end
+  end
+
+  defp domain_identity?(value) when is_binary(value) and value != "" do
+    if String.contains?(value, "://"), do: valid_http_url?(value), else: domain(value) != ""
+  end
+
+  defp domain_identity?(_), do: false
 
   defp valid_http_url?(value) when is_binary(value),
     do: String.starts_with?(value, ["https://", "http://"])
