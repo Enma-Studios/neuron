@@ -85,11 +85,131 @@ defmodule Neuron.Browser.BrowserUse do
     end
   end
 
-  def close_session(%{pid: pid, prepared: prepared}) do
-    _ = Pinocchio.Session.release(pid)
-    _ = Pinocchio.Providers.BrowserUse.stop(prepared[:provider_session])
-    Process.exit(pid, :shutdown)
+  @doc """
+  Release a session handle. Cleanup is routed through
+  `Neuron.Browser.Sessions` so the remote browser is stopped exactly once,
+  whether the caller reaches this call or dies before it.
+  """
+  def close_session(handle), do: Neuron.Browser.Sessions.close(handle)
+
+  @doc """
+  Stop one session's remote browser and its local connection process.
+
+  The remote stop runs first and unconditionally: it is the billed
+  resource, and releasing a connection process that has already died must
+  not be able to skip it.
+  """
+  def stop_session(handle) do
+    provider = handle[:stop_with] || Pinocchio.Providers.BrowserUse
+    _ = provider.stop(handle[:prepared][:provider_session])
+
+    if pid = handle[:pid] do
+      _ = if Process.alive?(pid), do: Pinocchio.Session.release(pid)
+      Process.exit(pid, :shutdown)
+    end
+
     :ok
+  end
+
+  @endpoint "https://api.browser-use.com/api/v4/browsers"
+  @page_size 100
+  @max_pages 20
+
+  @doc """
+  Every browser the provider has recorded for this API key, newest first.
+
+  The listing pages through `pageSize`; the `limit` parameter the v4 API
+  advertises is ignored and silently returns ten rows.
+  """
+  def list_sessions(opts \\ []) do
+    config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
+    key = opts[:api_key] || config[:api_key] || System.get_env("BROWSER_USE_API_KEY")
+    endpoint = opts[:api_endpoint] || config[:api_endpoint] || config[:endpoint] || @endpoint
+
+    if is_nil(key) or key == "" do
+      {:error, :browser_use_not_configured}
+    else
+      list_pages(endpoint, key, 1, [])
+    end
+  end
+
+  @doc """
+  Stop every provider-side browser still running past the configured TTL.
+
+  Sessions outlive their run whenever a caller was killed before its
+  cleanup path, so this is the operator's backstop against a leak that has
+  already happened. Returns `{:ok, stopped_ids}`.
+  """
+  def sweep(opts \\ []) do
+    ttl = opts[:session_ttl_seconds] || session_ttl_seconds()
+    now = opts[:now] || DateTime.utc_now()
+
+    with {:ok, sessions} <- list_sessions(opts) do
+      config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
+      key = opts[:api_key] || config[:api_key] || System.get_env("BROWSER_USE_API_KEY")
+      endpoint = opts[:api_endpoint] || config[:api_endpoint] || config[:endpoint] || @endpoint
+
+      stopped =
+        for id <- stale_sessions(sessions, now, ttl) do
+          :ok =
+            Pinocchio.Providers.BrowserUse.stop(%{id: id, api_key: key, endpoint: endpoint})
+
+          id
+        end
+
+      {:ok, stopped}
+    end
+  end
+
+  @doc """
+  The ids in `sessions` that are still running and started longer ago than
+  `ttl` seconds. A session the provider has already stopped is never swept,
+  however old it is.
+  """
+  def stale_sessions(sessions, now, ttl) do
+    sessions
+    |> Enum.filter(&stale?(&1, now, ttl))
+    |> Enum.map(& &1["id"])
+  end
+
+  @doc "Seconds a provisioned browser may run before `sweep/1` stops it."
+  def session_ttl_seconds do
+    config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
+    config[:session_ttl_seconds] || 3600
+  end
+
+  defp stale?(session, now, ttl) do
+    open? = session["status"] != "stopped" and is_nil(session["finishedAt"])
+
+    open? and
+      case DateTime.from_iso8601(session["startedAt"] || "") do
+        {:ok, started, _} -> DateTime.diff(now, started) > ttl
+        _ -> false
+      end
+  end
+
+  defp list_pages(_endpoint, _key, page, seen) when page > @max_pages, do: {:ok, seen}
+
+  defp list_pages(endpoint, key, page, seen) do
+    query = URI.encode_query(%{"pageSize" => @page_size, "pageNumber" => page})
+
+    case apply(Req, :get, [
+           endpoint <> "?" <> query,
+           [headers: [{"x-browser-use-api-key", key}], receive_timeout: 30_000]
+         ]) do
+      {:ok, %{status: status, body: %{"items" => items} = body}} when status in 200..299 ->
+        seen = seen ++ items
+
+        if length(seen) < (body["totalItems"] || 0) and items != [],
+          do: list_pages(endpoint, key, page + 1, seen),
+          else: {:ok, seen}
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, {:browser_use_http, status, body}}
+
+      {:error, reason} ->
+        {:error, {:browser_use_transport, reason}}
+    end
   end
 
   defp fetch_with_open_session(url, opts) do
@@ -157,13 +277,15 @@ defmodule Neuron.Browser.BrowserUse do
          :ok <- Pinocchio.Session.acquire(pid, self()) do
       Process.unlink(pid)
 
-      {:ok,
-       %{
-         pid: pid,
-         provider: :browser_use,
-         session: %Pinocchio.Session{pid: pid},
-         prepared: prepared
-       }}
+      handle = %{
+        pid: pid,
+        provider: :browser_use,
+        session: %Pinocchio.Session{pid: pid},
+        prepared: prepared
+      }
+
+      :ok = Neuron.Browser.Sessions.track(handle)
+      {:ok, handle}
     else
       {:error, reason} -> {:error, {:browser_use_start, reason}}
     end

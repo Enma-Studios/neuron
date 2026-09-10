@@ -163,3 +163,14 @@ defmodule Neuron.SearchTest.TeamHarvestModel do
     {:ok, %{"choices" => [%{"message" => %{"content" => content}}]}}
   end
 end
+
+# Records provider-side session stops so cleanup can be asserted without a
+# cloud browser. Supplied to a session handle as `stop_with:`.
+defmodule Neuron.BrowserTest.RecordingProvider do
+  def stop(%{id: id, reply_to: pid}) do
+    send(pid, {:stopped, id})
+    :ok
+  end
+
+  def stop(_session), do: :ok
+end

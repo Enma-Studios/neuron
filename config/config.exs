@@ -27,7 +27,8 @@ config :neuron,
   browser: [
     fleet: [sessions: 1, pages_per_session: 4, timeout: 45_000],
     browser_use: [
-      profile_id: System.get_env("BROWSER_USE_PROFILE_ID")
+      profile_id: System.get_env("BROWSER_USE_PROFILE_ID"),
+      session_ttl_seconds: 3600
     ]
   ],
   search: [
