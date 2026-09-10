@@ -19,12 +19,14 @@ defmodule Neuron.Graph do
     variable = "v#{Enum.find_index(ids, &(&1 == identity))}"
 
     Neuron.Telemetry.span([:graph, :insert_once], Neuron.Telemetry.trace_metadata(opts), fn ->
-      case Dlex.mutate(
-             connection,
-             %{query: query},
-             %{set: encode_vectors(payload), cond: "@if(eq(len(#{variable}), 0))"},
-             []
-           ) do
+      case with_conflict_retry(opts, fn ->
+             Dlex.mutate(
+               connection,
+               %{query: query},
+               %{set: encode_vectors(payload), cond: "@if(eq(len(#{variable}), 0))"},
+               []
+             )
+           end) do
         {:ok, _} -> :ok
         error -> error
       end
@@ -38,12 +40,14 @@ defmodule Neuron.Graph do
     deletion = Map.new(predicates, &{&1, nil}) |> Map.put("uid", payload["uid"])
 
     Neuron.Telemetry.span([:graph, :replace], Neuron.Telemetry.trace_metadata(opts), fn ->
-      case Dlex.mutate(
-             connection,
-             %{query: query},
-             %{delete: deletion, set: encode_vectors(payload)},
-             []
-           ) do
+      case with_conflict_retry(opts, fn ->
+             Dlex.mutate(
+               connection,
+               %{query: query},
+               %{delete: deletion, set: encode_vectors(payload)},
+               []
+             )
+           end) do
         {:ok, _} -> :ok
         error -> error
       end
@@ -54,9 +58,92 @@ defmodule Neuron.Graph do
     connection = Keyword.get_lazy(opts, :connection, &Neuron.Dgraph.connection/0)
     {query, payload} = upsert_request(facts)
 
-    case Dlex.mutate(connection, %{query: query}, %{set: encode_vectors(payload)}, []) do
+    result =
+      with_conflict_retry(opts, fn ->
+        Dlex.mutate(connection, %{query: query}, %{set: encode_vectors(payload)}, [])
+      end)
+
+    case result do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @conflict_attempts 5
+  @conflict_backoff_ms 50
+  @conflict_backoff_cap_ms 800
+
+  @doc """
+  Run a graph mutation, retrying while Dgraph aborts the transaction.
+
+  A gRPC `ABORTED` is the database saying two writers touched the same
+  entity concurrently and the loser should try again. It is not a statement
+  that the write was wrong. Neuron dispatches a batch of ingestion children
+  at once and they routinely upsert overlapping organizations, sources and
+  claims, so the collision is expected rather than exceptional, and the
+  message says "Please retry" where nothing used to.
+
+  Backoff is exponential with jitter and a cap, and the attempt count is
+  bounded: a genuinely contended entity must eventually give up rather than
+  hold a stage open. Any error that is not an abort is returned on the
+  first attempt, unchanged. A conflict that exhausts its retries is counted
+  against the run, so a run that lost evidence says so.
+  """
+  def with_conflict_retry(opts, fun) when is_function(fun, 0) do
+    attempt_mutation(opts, fun, 1)
+  end
+
+  defp attempt_mutation(opts, fun, attempt) do
+    case fun.() do
+      {:ok, _} = ok ->
+        ok
+
+      {:error, reason} = error ->
+        attempts = Keyword.get(opts, :graph_conflict_attempts, @conflict_attempts)
+
+        cond do
+          not conflict?(reason) ->
+            error
+
+          attempt < attempts ->
+            Neuron.Telemetry.emit(
+              [:graph, :conflict_retry],
+              Neuron.Telemetry.trace_metadata(opts)
+              |> Map.merge(%{attempt: attempt, attempts: attempts})
+            )
+
+            Process.sleep(backoff(attempt, opts))
+            attempt_mutation(opts, fun, attempt + 1)
+
+          true ->
+            Neuron.Telemetry.emit(
+              [:graph, :conflict_exhausted],
+              Neuron.Telemetry.trace_metadata(opts) |> Map.put(:attempts, attempts)
+            )
+
+            :ok = Neuron.Usage.record_conflict(opts)
+            error
+        end
+    end
+  end
+
+  @doc "Whether a Dgraph error is a transaction abort, which is worth retrying."
+  # Matched structurally where the shape is known and by Dgraph's own wording
+  # otherwise, so a change in the client's error struct cannot silently turn
+  # every abort into a permanent failure again.
+  def conflict?(%{reason: %{status: 10}}), do: true
+  def conflict?(%{status: 10}), do: true
+  def conflict?(reason) when is_binary(reason), do: aborted?(reason)
+  def conflict?(reason), do: aborted?(inspect(reason))
+
+  defp aborted?(text), do: String.contains?(text, "Transaction has been aborted")
+
+  defp backoff(attempt, opts) do
+    base = Keyword.get(opts, :graph_conflict_backoff_ms, @conflict_backoff_ms)
+
+    case base * Integer.pow(2, attempt - 1) do
+      0 -> 0
+      delay -> min(delay, @conflict_backoff_cap_ms) + :rand.uniform(base + 1) - 1
     end
   end
 
