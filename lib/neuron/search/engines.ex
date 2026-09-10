@@ -229,7 +229,13 @@ defmodule Neuron.Search.X do
 end
 
 defmodule Neuron.Search.Reddit do
-  @moduledoc "Reddit search rendered from the server-side old Reddit HTML."
+  @moduledoc """
+  Reddit search rendered from the server-side old Reddit HTML.
+
+  Disabled by default: cloud datacenter IPs are redirected to a login wall.
+  Re-enable through `:neuron, :search, :engines` once searches run through
+  residential proxies.
+  """
   @behaviour Neuron.Search.Engine
 
   import Neuron.Search.Engine, only: [html_entities: 1, strip_site_operators: 1, text: 1]

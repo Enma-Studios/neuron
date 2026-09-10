@@ -6,8 +6,7 @@ defmodule Neuron.Search do
     Neuron.Search.Google,
     Neuron.Search.Yandex,
     Neuron.Search.LinkedIn,
-    Neuron.Search.X,
-    Neuron.Search.Reddit
+    Neuron.Search.X
   ]
 
   @doc """

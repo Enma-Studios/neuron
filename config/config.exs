@@ -36,8 +36,7 @@ config :neuron,
       Neuron.Search.Google,
       Neuron.Search.Yandex,
       Neuron.Search.LinkedIn,
-      Neuron.Search.X,
-      Neuron.Search.Reddit
+      Neuron.Search.X
     ]
   ],
   limits: [max_runs: 32],

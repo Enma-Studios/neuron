@@ -3,7 +3,7 @@ defmodule Neuron.CampaignPipeline do
 
   @moduledoc "Campaign discovery schedules durable source jobs and selects from shared graph evidence."
 
-  @social_engines [Neuron.Search.LinkedIn, Neuron.Search.X, Neuron.Search.Reddit]
+  @social_engines [Neuron.Search.LinkedIn, Neuron.Search.X]
 
   def stages,
     do: [:prepare, :retrieve, :plan_search, :search, :dispatch, :collect, :rank, :draft, :finish]
@@ -294,7 +294,7 @@ defmodule Neuron.CampaignPipeline do
         Keyword.get(opts, :budget_seconds, 7200)
   end
 
-  # Native social checks are mandatory every round: LinkedIn, X, and Reddit
+  # Native social checks are mandatory every round: LinkedIn and X
   # content is often not indexed by web engines at all, so the pipeline adds
   # a topic query whenever the planner leaves a social platform uncovered.
   defp ensure_social_coverage(searches, target_profile, enabled) do
