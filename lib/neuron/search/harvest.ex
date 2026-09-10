@@ -36,7 +36,12 @@ defmodule Neuron.Search.Harvest do
 
         {found,
          [
-           %{engine: transcript.engine, query: transcript.query, reason: inspect(reason)}
+           %{
+             engine: transcript.engine,
+             query: transcript.query,
+             kind: :harvest_failed,
+             reason: inspect(reason)
+           }
            | failures
          ]}
     end)

@@ -58,15 +58,23 @@ defmodule Neuron.Search do
 
         page_failures =
           for {id, {:error, reason}} <- pages, task = task_by_id[id] do
-            %{engine: task.engine, query: task.query, reason: inspect(reason)}
+            %{
+              engine: task.engine,
+              query: task.query,
+              kind: :page_failed,
+              reason: inspect(reason)
+            }
           end ++
-            for transcript <- walled do
+            Enum.map(walled, fn transcript ->
+              {kind, reason} = wall_reason(transcript)
+
               %{
                 engine: transcript.engine,
                 query: transcript.query,
-                reason: wall_reason(transcript)
+                kind: kind,
+                reason: reason
               }
-            end
+            end)
 
         for failure <- page_failures do
           Neuron.Telemetry.emit(
@@ -261,7 +269,9 @@ defmodule Neuron.Search do
   def validate_searches(_other, _enabled), do: {:error, :expected_searches}
 
   @doc """
-  Why this page cannot be harvested, or `nil` when it can.
+  How this page is walled, as `{kind, reason}`, or `nil` when it can be
+  harvested. `kind` is `:login_gate`, `:consent_wall` or `:bot_check`, so a
+  host can say which happened rather than only that something did.
 
   A login gate, a consent wall and a bot check all render a page with no
   results on it. Harvesting one yields nothing and looks identical to an
@@ -277,16 +287,16 @@ defmodule Neuron.Search do
 
     cond do
       String.contains?(url, ["/authwall", "/login", "/signin", "/account/access"]) ->
-        "login gate at #{transcript.url}"
+        {:login_gate, "login gate at #{transcript.url}"}
 
       String.contains?(url, ["consent.", "/consent", "/sorry/", "/showcaptcha"]) ->
-        "consent or bot wall at #{transcript.url}"
+        {:consent_wall, "consent or bot wall at #{transcript.url}"}
 
       is_atom(engine) and not is_nil(engine) and engine.gated?(document) ->
-        "login gate at #{transcript.url}"
+        {:login_gate, "login gate at #{transcript.url}"}
 
       is_atom(engine) and not is_nil(engine) and engine.blocked?(document) ->
-        "bot check at #{transcript.url}"
+        {:bot_check, "bot check at #{transcript.url}"}
 
       true ->
         nil
