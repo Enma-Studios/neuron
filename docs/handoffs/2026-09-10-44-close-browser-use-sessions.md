@@ -71,10 +71,12 @@ for the window before that timeout, which is where the billing actually accrues.
 ## Provider note
 
 The spike handoff records that `/api/v4/browsers` ignores `limit` and returns only the ten
-most recent rows. The parameter it honours is `pageSize`; `limit` is ignored. The listing
-here pages with `pageSize=100` and `pageNumber`, and reads `totalItems` to know when to
-stop, so it sees the whole account rather than a truncated window. Worth carrying back to
-Neureni issue #40, whose cost workaround reads the same endpoint.
+most recent rows, and concludes the endpoint truncates. It does not. **The parameters it
+honours are `pageSize` and `pageNumber`**; `limit` is ignored, which is why passing it looks
+like truncation. The response also carries `totalItems`. The listing here pages with
+`pageSize=100` and an incrementing `pageNumber` until it has seen `totalItems`, so it reads
+the whole account rather than a truncated window. Worth carrying back to Neureni issue #40,
+whose cost workaround reads the same endpoint and undercounts for this reason.
 
 ## Not covered
 
