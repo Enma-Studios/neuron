@@ -8,6 +8,7 @@ defmodule Neuron.Usage.Entry do
     field(:kind, :string)
     field(:label, :string)
     field(:prompt_tokens, :integer, default: 0)
+    field(:cached_tokens, :integer, default: 0)
     field(:completion_tokens, :integer, default: 0)
     field(:seconds, :float, default: 0.0)
     timestamps(type: :utc_datetime_usec, updated_at: false)
@@ -34,6 +35,7 @@ defmodule Neuron.Usage do
   @empty %{
     model_calls: 0,
     prompt_tokens: 0,
+    cached_tokens: 0,
     completion_tokens: 0,
     browser_sessions: 0,
     browser_seconds: 0.0,
@@ -49,6 +51,10 @@ defmodule Neuron.Usage do
         kind: "model",
         label: opts[:model] || Application.get_env(:neuron, :model, [])[:model],
         prompt_tokens: integer(usage["prompt_tokens"]),
+        # Z.ai caches request prefixes implicitly and reports the reused
+        # span here. This is the only honest evidence that a cached prefix
+        # was hit; repeated text alone proves nothing.
+        cached_tokens: integer(get_in(usage, ["prompt_tokens_details", "cached_tokens"])),
         completion_tokens: integer(usage["completion_tokens"])
       },
       opts
@@ -189,6 +195,7 @@ defmodule Neuron.Usage do
             acc
             | model_calls: acc.model_calls + 1,
               prompt_tokens: acc.prompt_tokens + (entry.prompt_tokens || 0),
+              cached_tokens: acc.cached_tokens + (entry.cached_tokens || 0),
               completion_tokens: acc.completion_tokens + (entry.completion_tokens || 0)
           }
 

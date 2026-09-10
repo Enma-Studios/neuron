@@ -68,6 +68,7 @@ defmodule Neuron.UsageTest do
     assert usage.total == %{
              model_calls: 3,
              prompt_tokens: 1250,
+             cached_tokens: 0,
              completion_tokens: 170,
              browser_sessions: 2,
              browser_seconds: 16.5,

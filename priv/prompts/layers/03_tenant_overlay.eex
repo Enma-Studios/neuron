@@ -1,0 +1,2 @@
+Tenant context, supplied by the host application and authoritative over anything inferred.
+<%= @overlay %>
