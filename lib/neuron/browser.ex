@@ -102,6 +102,7 @@ defmodule Neuron.Browser.BrowserUse do
   def stop_session(handle) do
     provider = handle[:stop_with] || Pinocchio.Providers.BrowserUse
     _ = provider.stop(handle[:prepared][:provider_session])
+    _ = record_session_usage(handle[:usage])
 
     if pid = handle[:pid] do
       _ = if Process.alive?(pid), do: Pinocchio.Session.release(pid)
@@ -281,7 +282,17 @@ defmodule Neuron.Browser.BrowserUse do
         pid: pid,
         provider: :browser_use,
         session: %Pinocchio.Session{pid: pid},
-        prepared: prepared
+        prepared: prepared,
+        # Carried on the handle because the process that stops a session is
+        # often not the one that opened it: an owner can die and the
+        # cleanup owner closes it instead.
+        usage: %{
+          run_id: opts[:run_id],
+          parent_run_id: opts[:parent_run_id],
+          stage: opts[:stage],
+          provider: :browser_use,
+          opened_at: System.monotonic_time(:millisecond)
+        }
       }
 
       :ok = Neuron.Browser.Sessions.track(handle)
@@ -290,6 +301,17 @@ defmodule Neuron.Browser.BrowserUse do
       {:error, reason} -> {:error, {:browser_use_start, reason}}
     end
   end
+
+  defp record_session_usage(%{opened_at: opened_at} = usage) do
+    seconds = (System.monotonic_time(:millisecond) - opened_at) / 1000
+
+    Neuron.Usage.record_browser(
+      seconds,
+      usage |> Map.delete(:opened_at) |> Map.to_list()
+    )
+  end
+
+  defp record_session_usage(_usage), do: :ok
 
   defp maybe_put_profile_id(config, id) when is_binary(id) and id != "" do
     Map.put(config, :profile_id, id)

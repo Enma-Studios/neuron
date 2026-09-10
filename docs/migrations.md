@@ -8,7 +8,7 @@ Run migrations as a deployment step before starting workers. They are never sile
 mix neuron.migrate
 ```
 
-The task starts the configured repo with `Ecto.Migrator.with_repo/2`, then runs pending files in `priv/repo/migrations` using Ecto's migration ledger. Migration `20260909000002` adds campaign-scoped SQL selection reservations with a unique campaign/person key. The initial migration creates Oban's tables through `Oban.Migration`, plus `neuron_machines`, `neuron_events`, and `neuron_graph_migrations`. Re-running the task skips applied versions.
+The task starts the configured repo with `Ecto.Migrator.with_repo/2`, then runs pending files in `priv/repo/migrations` using Ecto's migration ledger. Migration `20260909000002` adds campaign-scoped SQL selection reservations with a unique campaign/person key. Migration `20260910000001` adds `neuron_usage`, one row per model call and per browser session, which is what `get_run/1` aggregates into `usage`. The initial migration creates Oban's tables through `Oban.Migration`, plus `neuron_machines`, `neuron_events`, and `neuron_graph_migrations`. Re-running the task skips applied versions.
 
 Standalone SQLite defaults to `neuron.db`. Tests use `neuron_test.db`; the `test` Mix alias runs SQL migrations before application startup. Production requires `NEURON_DATABASE` when using the supplied runtime configuration.
 

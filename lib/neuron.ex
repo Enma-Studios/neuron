@@ -31,12 +31,23 @@ defmodule Neuron do
     data = FSM.data(machine)
     FSM.definition(machine)
 
+    status = String.to_existing_atom(machine.state)
+
     snapshot =
       Map.merge(data, %{
         id: id,
-        status: String.to_existing_atom(machine.state),
-        version: machine.version
+        status: status,
+        version: machine.version,
+        # Additive: `usage` is always present and `error_class` only when the
+        # run carries an error. No existing key changes shape.
+        usage: Neuron.Usage.snapshot(id)
       })
+
+    snapshot =
+      case Neuron.Usage.error_class(data[:error]) do
+        nil -> snapshot
+        class -> Map.put(snapshot, :error_class, class)
+      end
 
     if is_map(data[:result]) do
       Enum.reduce(

@@ -102,7 +102,10 @@ defmodule Neuron.StageWorker do
       stage = Enum.fetch!(stages, data.stage_index)
 
       opts =
-        data.opts |> Keyword.put(:run_id, id) |> Keyword.put(:transition_version, machine.version)
+        data.opts
+        |> Keyword.put(:run_id, id)
+        |> Keyword.put(:stage, stage)
+        |> Keyword.put(:transition_version, machine.version)
 
       result =
         Neuron.Telemetry.span([:pipeline, :stage], %{run_id: id, stage: stage}, fn ->

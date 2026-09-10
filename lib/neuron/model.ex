@@ -47,6 +47,7 @@ defmodule Neuron.Model.ZAI do
            ]) do
         {:ok, %{status: status, body: response}} when status in 200..299 ->
           message = get_in(response, ["choices", Access.at(0), "message"]) || %{}
+          :ok = Neuron.Usage.record_model(response, Keyword.put(opts, :model, body.model))
 
           Neuron.Telemetry.emit(
             [:model, :decision],
