@@ -174,3 +174,50 @@ defmodule Neuron.BrowserTest.RecordingProvider do
 
   def stop(_session), do: :ok
 end
+
+# An engine whose result page is a bot check rather than results. The wall
+# is only visible in the document the page returns, which is how three
+# walled engines read as a working search that found no prospects.
+defmodule Neuron.SearchTest.WalledEngine do
+  @behaviour Neuron.Search.Engine
+
+  def kind, do: :web
+  def keywords(query), do: query
+  def search_url(keywords), do: "https://walled.example/search?q=#{URI.encode_www_form(keywords)}"
+  def parse(_html), do: []
+  def blocked?(document), do: String.contains?(document, "unusual traffic")
+  def gated?(_document), do: false
+end
+
+# Returns a bot-check document for the walled engine and an ordinary
+# transcript for every other engine, so one round can mix the two.
+defmodule Neuron.SearchTest.MixedAgent do
+  def run_page(_handle, task, opts) do
+    domain = Keyword.get(opts, :fixture_domain, "acme.example")
+
+    transcript = %{
+      url: task.url,
+      title: "Search",
+      markdown: "## Results\n\n- [Team](https://#{domain}/team)",
+      text: "Results for #{task.query}",
+      document: "",
+      links: [%{href: "https://#{domain}/team", label: "Team"}],
+      engine: task.engine,
+      query: task.query
+    }
+
+    case task.engine do
+      Neuron.SearchTest.WalledEngine ->
+        {:ok,
+         %{
+           transcript
+           | markdown: "",
+             links: [],
+             document: "<html>Our systems have detected unusual traffic</html>"
+         }}
+
+      _ ->
+        {:ok, transcript}
+    end
+  end
+end

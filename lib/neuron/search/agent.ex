@@ -48,6 +48,7 @@ defmodule Neuron.Search.Agent do
       title: String.trim(raw["title"] || ""),
       markdown: normalize_content(raw["markdown"]),
       text: normalize_content(raw["text"]),
+      document: normalize_document(raw["document"]),
       links: normalize_links(raw["links"]),
       engine: task.engine,
       query: task.query
@@ -71,6 +72,13 @@ defmodule Neuron.Search.Agent do
 
   defp normalize_content(_), do: ""
 
+  # Present only when the page was small enough to be a wall rather than a
+  # results page. Read by the engine's bot check and login gate markers.
+  defp normalize_document(document) when is_binary(document),
+    do: String.slice(document, 0, 32_000)
+
+  defp normalize_document(_), do: ""
+
   defp normalize_links(links) when is_list(links) do
     links
     |> Stream.map(&normalize_link/1)
@@ -82,7 +90,7 @@ defmodule Neuron.Search.Agent do
   defp normalize_links(_), do: []
 
   defp normalize_link(%{"href" => href} = link) when is_binary(href) do
-    href = String.trim(href)
+    href = href |> String.trim() |> Neuron.Search.Engine.unwrap()
 
     if String.starts_with?(href, ["https://", "http://"]) do
       %{href: href, label: String.trim(link["label"] || "")}

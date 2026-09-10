@@ -53,26 +53,40 @@ defmodule Neuron.Search do
         transcripts =
           for {_id, {:ok, transcript}} <- pages, is_map(transcript), do: transcript
 
-        {open_transcripts, gated} =
-          Enum.split_with(transcripts, fn transcript -> not gated_url?(transcript.url) end)
+        {open_transcripts, walled} =
+          Enum.split_with(transcripts, fn transcript -> is_nil(wall_reason(transcript)) end)
 
         page_failures =
           for {id, {:error, reason}} <- pages, task = task_by_id[id] do
             %{engine: task.engine, query: task.query, reason: inspect(reason)}
           end ++
-            for transcript <- gated do
+            for transcript <- walled do
               %{
                 engine: transcript.engine,
                 query: transcript.query,
-                reason: "login gate at #{transcript.url}"
+                reason: wall_reason(transcript)
               }
             end
+
+        for failure <- page_failures do
+          Neuron.Telemetry.emit(
+            [:search, :engine_failed],
+            Neuron.Telemetry.trace_metadata(opts)
+            |> Map.merge(%{engine: inspect(failure.engine), reason: failure.reason})
+          )
+        end
 
         {found, harvest_failures} = Neuron.Search.Harvest.from_transcripts(open_transcripts, opts)
         merged = merge_results(found)
         failures = page_failures ++ harvest_failures
 
-        if merged == [] and failures != [] do
+        # A round is unavailable only when no engine answered at all. An
+        # engine that answered with nothing still carried the round, and a
+        # walled or gated engine is a skipped engine, never a failed round.
+        answered =
+          MapSet.new(found, fn {engine, _results} -> engine end)
+
+        if MapSet.size(answered) == 0 and failures != [] do
           {:error, {:search_unavailable, reason: {:all_searches_failed, failures}}}
         else
           {:ok, merged, failures}
@@ -246,12 +260,38 @@ defmodule Neuron.Search do
 
   def validate_searches(_other, _enabled), do: {:error, :expected_searches}
 
-  # A search page that landed on a login redirect never shows results, so
-  # it counts as a gated engine rather than an empty harvest.
-  defp gated_url?(url) when is_binary(url),
-    do: String.contains?(String.downcase(url), ["/authwall", "/login", "/signin"])
+  @doc """
+  Why this page cannot be harvested, or `nil` when it can.
 
-  defp gated_url?(_), do: false
+  A login gate, a consent wall and a bot check all render a page with no
+  results on it. Harvesting one yields nothing and looks identical to an
+  engine that honestly found nothing, which is how three walled engines
+  came to read as a working search that discovered no prospects. Each is
+  recorded here as a skipped engine and nothing is ever done to get past
+  one.
+  """
+  def wall_reason(transcript) do
+    url = String.downcase(transcript[:url] || "")
+    document = transcript[:document] || ""
+    engine = transcript[:engine]
+
+    cond do
+      String.contains?(url, ["/authwall", "/login", "/signin", "/account/access"]) ->
+        "login gate at #{transcript.url}"
+
+      String.contains?(url, ["consent.", "/consent", "/sorry/", "/showcaptcha"]) ->
+        "consent or bot wall at #{transcript.url}"
+
+      is_atom(engine) and not is_nil(engine) and engine.gated?(document) ->
+        "login gate at #{transcript.url}"
+
+      is_atom(engine) and not is_nil(engine) and engine.blocked?(document) ->
+        "bot check at #{transcript.url}"
+
+      true ->
+        nil
+    end
+  end
 
   defp engine_for(id, enabled) do
     normalized = String.downcase(String.trim(id))
@@ -295,6 +335,38 @@ defmodule Neuron.Search.Engine do
     |> String.replace("&lt;", "<")
     |> String.replace("&gt;", ">")
   end
+
+  @doc """
+  Unwrap an engine's redirect link into the URL it actually points at.
+
+  Result links in a rendered results page are the engine's own tracking
+  redirects, so a transcript hands the model `duckduckgo.com/l/?uddg=...`
+  rather than the prospect's page. Harvesting one ingests the search engine
+  instead of the company, and records the engine as the organization. The
+  per-engine parsers already unwrap these; the transcript path reads the
+  DOM directly and needs the same treatment. A link that is not a known
+  wrapper is returned unchanged.
+  """
+  def unwrap(href) when is_binary(href) do
+    uri = URI.parse(href)
+    host = String.downcase(uri.host || "")
+    path = uri.path || ""
+    params = if is_binary(uri.query), do: URI.decode_query(uri.query), else: %{}
+
+    target =
+      cond do
+        String.contains?(host, "duckduckgo.com") -> params["uddg"]
+        String.contains?(host, "google.") and path == "/url" -> params["q"] || params["url"]
+        String.contains?(host, "yandex.") -> params["url"]
+        true -> nil
+      end
+
+    if is_binary(target) and String.starts_with?(target, ["http://", "https://"]),
+      do: target,
+      else: href
+  end
+
+  def unwrap(href), do: href
 
   @doc """
   Drop `site:` operators so native social searches never see engine-scoped

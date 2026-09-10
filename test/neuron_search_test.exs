@@ -98,6 +98,53 @@ defmodule Neuron.SearchTest do
     assert result.title == "Looking for feedback on Acme"
   end
 
+  test "unwraps engine redirect links into the page they point at" do
+    assert Neuron.Search.Engine.unwrap(
+             "https://duckduckgo.com/l/?uddg=https%3A%2F%2Fblog.helpdocs.io%2Frebuilding%2D&rut=abc"
+           ) == "https://blog.helpdocs.io/rebuilding-"
+
+    assert Neuron.Search.Engine.unwrap(
+             "https://www.google.com/url?q=https%3A%2F%2Facme.example%2Fteam&sa=U"
+           ) ==
+             "https://acme.example/team"
+
+    # Anything that is not a known wrapper is left exactly as it was.
+    assert Neuron.Search.Engine.unwrap("https://acme.example/team") == "https://acme.example/team"
+
+    assert Neuron.Search.Engine.unwrap("https://duckduckgo.com/settings") ==
+             "https://duckduckgo.com/settings"
+  end
+
+  describe "wall_reason/1" do
+    test "reports a login gate, a bot wall, and a clean page" do
+      assert Neuron.Search.wall_reason(%{
+               url: "https://www.linkedin.com/authwall?sessionRedirect=x",
+               document: "",
+               engine: Neuron.SearchTest.WebEngine
+             }) =~ "login gate"
+
+      assert Neuron.Search.wall_reason(%{
+               url: "https://www.google.com/sorry/index?continue=x",
+               document: "",
+               engine: Neuron.SearchTest.WebEngine
+             }) =~ "consent or bot wall"
+
+      assert Neuron.Search.wall_reason(%{
+               url: "https://web.example/search?q=acme",
+               document: "<html>results</html>",
+               engine: Neuron.SearchTest.WebEngine
+             }) == nil
+    end
+
+    test "reads the engine's own bot check markers off the returned document" do
+      assert Neuron.Search.wall_reason(%{
+               url: "https://www.google.com/search?q=acme",
+               document: "<html>Our systems have detected unusual traffic</html>",
+               engine: Neuron.Search.Google
+             }) =~ "bot check"
+    end
+  end
+
   test "every engine exposes the shared behaviour surface" do
     for engine <- [
           Neuron.Search.DuckDuckGo,
@@ -262,6 +309,34 @@ defmodule Neuron.SearchTest do
                failures
 
       assert reason =~ "login gate"
+    end
+
+    test "a walled engine is skipped and the engines that answered carry the round" do
+      searches = [
+        %{engine: Neuron.SearchTest.SocialEngine, query: "acme CTO"},
+        %{engine: Neuron.SearchTest.WalledEngine, query: "acme CTO"},
+        %{engine: Neuron.SearchTest.LoginEngine, query: "acme CTO"}
+      ]
+
+      assert {:ok, merged, failures} =
+               Neuron.Search.orchestrate(searches,
+                 engines: [
+                   Neuron.SearchTest.SocialEngine,
+                   Neuron.SearchTest.WalledEngine,
+                   Neuron.SearchTest.LoginEngine
+                 ],
+                 handles: [%{provider: :fake, session: nil}],
+                 pages_per_session: 3,
+                 page_adapter: Neuron.SearchTest.MixedAgent,
+                 model_provider: Neuron.SearchTest.TeamHarvestModel,
+                 fixture_domain: "buyer.example"
+               )
+
+      assert [%{url: "https://buyer.example/team"}] = merged
+
+      reasons = Map.new(failures, &{&1.engine, &1.reason})
+      assert reasons[Neuron.SearchTest.WalledEngine] =~ "bot check"
+      assert reasons[Neuron.SearchTest.LoginEngine] =~ "login gate"
     end
 
     test "errors only when every search fails" do

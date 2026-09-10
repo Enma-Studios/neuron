@@ -53,7 +53,7 @@ Alternatively, set `start_repo: true` and `start_oban: true` and put the Postgre
 | `ZAI_API_KEY` | Required for live model calls |
 | `ZAI_BASE_URL` | Production override for `https://api.z.ai/api/paas/v4` |
 | `BROWSER_USE_API_KEY` | Required for all browsing; Browser Use is the only browser provider |
-| `BROWSER_USE_PROFILE_ID` | Optional; Browser Use profile sent to new sessions when set |
+| `BROWSER_USE_PROFILE_ID` | Optional, default unset; see the warning below before setting it |
 | `NEURON_FLEET_SESSIONS` | `1` in production; browser sessions opened per search fleet |
 | `NEURON_FLEET_PAGES` | `4` in production; concurrent pages multiplexed per fleet session |
 | `NEURON_CAPTURE_PAYLOADS` | `false`; production telemetry payload setting |
@@ -64,7 +64,13 @@ All browsing runs on Browser Use cloud browsers; there is no local browser provi
 
 ## Search engines and the browser fleet
 
-Searches run on every enabled engine through `:neuron, :search, :engines` (DuckDuckGo, Google, Yandex, LinkedIn, X, and Reddit by default). The model tailors each query to its platform before anything runs: LinkedIn, X, and Reddit get native, operator-free queries, while the keyword engines keep operators such as `site:` and quoted phrases. Native LinkedIn and X search requires a logged-in `BROWSER_USE_PROFILE_ID`; without one those engines report a login gate and the remaining engines carry the round.
+Searches run on every enabled engine through `:neuron, :search, :engines` (DuckDuckGo, Google, Yandex, LinkedIn, X, and Reddit by default). The model tailors each query to its platform before anything runs: LinkedIn, X, and Reddit get native, operator-free queries, while the keyword engines keep operators such as `site:` and quoted phrases, aimed at pages a prospective buyer publishes itself.
+
+`BROWSER_USE_PROFILE_ID` is a supported optional setting and is unset by default. Setting it sends a logged-in Browser Use profile to every new cloud session, which is what native LinkedIn and X search needs. **It is a logged-in path and it carries account and terms-of-service risk to whoever owns that profile.** It exists for standalone operation by the profile's own owner. An embedding host does not set it: the Neureni host runs the public engines only, with no profile, and resolves people and contacts through its own provider waterfall.
+
+A page that renders a login gate, a consent wall or a bot check is never worked around. It is recorded as a skipped engine with its reason and the remaining engines carry the round. `Neuron.Search.wall_reason/1` makes that decision, reading the final URL and, when the page was small enough to be a wall rather than a results page, the engine's own `blocked?/1` and `gated?/1` markers. Without a profile, LinkedIn and X report a login gate and are skipped on every query.
+
+Result links in a rendered results page are the engine's own tracking redirects, so transcript links are unwrapped through `Neuron.Search.Engine.unwrap/1` before the model reads them. Harvesting a wrapper would ingest the search engine rather than the prospect.
 
 Interaction-heavy pages (LinkedIn, X, Reddit, and other rendered feeds, configurable through `:neuron, :browser, :rich_hosts`) are never snapshotted whole: a bundled Turndown build is injected in the browser, and only the cleaned main section travels back as Markdown — both for search transcripts and for ingested source documents.
 
