@@ -23,6 +23,7 @@ defmodule Neuron.Application do
         Neuron.Embedding.children() ++
         [
           {Neuron.Dgraph, []},
+          {Neuron.Browser.Sessions, []},
           {DynamicSupervisor, name: Neuron.PipelineSupervisor, strategy: :one_for_one}
         ],
       strategy: :one_for_one,
