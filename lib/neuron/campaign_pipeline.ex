@@ -316,8 +316,17 @@ defmodule Neuron.CampaignPipeline do
     searches ++ missing
   end
 
-  defp search_failure(%{engine: engine, query: query, reason: reason}) do
-    %{query: "#{Neuron.Search.engine_id(engine)}: #{query}", reason: to_string(reason)}
+  # `engine` and `kind` are the machine-readable half: a host reading a
+  # completed run's failures can tell a skipped engine from a page that
+  # broke, and a run that failed outright carries the same list under
+  # `:search_unavailable`.
+  defp search_failure(%{engine: engine, query: query, reason: reason} = failure) do
+    %{
+      engine: Neuron.Search.engine_id(engine),
+      kind: failure[:kind] || :unknown,
+      query: "#{Neuron.Search.engine_id(engine)}: #{query}",
+      reason: to_string(reason)
+    }
   end
 
   defp validate_drafts(%{"summary" => summary, "leads" => drafts}, leads)

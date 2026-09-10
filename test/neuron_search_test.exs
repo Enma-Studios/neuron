@@ -117,17 +117,21 @@ defmodule Neuron.SearchTest do
 
   describe "wall_reason/1" do
     test "reports a login gate, a bot wall, and a clean page" do
-      assert Neuron.Search.wall_reason(%{
-               url: "https://www.linkedin.com/authwall?sessionRedirect=x",
-               document: "",
-               engine: Neuron.SearchTest.WebEngine
-             }) =~ "login gate"
+      assert {:login_gate, reason} =
+               Neuron.Search.wall_reason(%{
+                 url: "https://www.linkedin.com/authwall?sessionRedirect=x",
+                 document: "",
+                 engine: Neuron.SearchTest.WebEngine
+               })
 
-      assert Neuron.Search.wall_reason(%{
-               url: "https://www.google.com/sorry/index?continue=x",
-               document: "",
-               engine: Neuron.SearchTest.WebEngine
-             }) =~ "consent or bot wall"
+      assert reason =~ "login gate"
+
+      assert {:consent_wall, _} =
+               Neuron.Search.wall_reason(%{
+                 url: "https://www.google.com/sorry/index?continue=x",
+                 document: "",
+                 engine: Neuron.SearchTest.WebEngine
+               })
 
       assert Neuron.Search.wall_reason(%{
                url: "https://web.example/search?q=acme",
@@ -137,11 +141,14 @@ defmodule Neuron.SearchTest do
     end
 
     test "reads the engine's own bot check markers off the returned document" do
-      assert Neuron.Search.wall_reason(%{
-               url: "https://www.google.com/search?q=acme",
-               document: "<html>Our systems have detected unusual traffic</html>",
-               engine: Neuron.Search.Google
-             }) =~ "bot check"
+      assert {:bot_check, reason} =
+               Neuron.Search.wall_reason(%{
+                 url: "https://www.google.com/search?q=acme",
+                 document: "<html>Our systems have detected unusual traffic</html>",
+                 engine: Neuron.Search.Google
+               })
+
+      assert reason =~ "bot check"
     end
   end
 
@@ -311,6 +318,40 @@ defmodule Neuron.SearchTest do
       assert reason =~ "login gate"
     end
 
+    test "a login gate on one engine leaves the other two to carry the round" do
+      searches = [
+        %{engine: Neuron.SearchTest.WebEngine, query: "acme CTO"},
+        %{engine: Neuron.SearchTest.SocialEngine, query: "acme CTO"},
+        %{engine: Neuron.SearchTest.LoginEngine, query: "acme CTO"}
+      ]
+
+      assert {:ok, merged, failures} =
+               Neuron.Search.orchestrate(searches,
+                 engines: [
+                   Neuron.SearchTest.WebEngine,
+                   Neuron.SearchTest.SocialEngine,
+                   Neuron.SearchTest.LoginEngine
+                 ],
+                 handles: [%{provider: :fake, session: nil}],
+                 pages_per_session: 3,
+                 page_adapter: Neuron.SearchTest.MixedAgent,
+                 model_provider: Neuron.SearchTest.TeamHarvestModel,
+                 fixture_domain: "buyer.example"
+               )
+
+      # The round succeeded, and both engines that answered are credited.
+      assert [%{url: "https://buyer.example/team", engines: engines}] = merged
+
+      assert MapSet.new(engines) ==
+               MapSet.new([Neuron.SearchTest.WebEngine, Neuron.SearchTest.SocialEngine])
+
+      # The gated engine is a skipped engine, named, with its kind.
+      assert [%{engine: Neuron.SearchTest.LoginEngine, kind: :login_gate, reason: reason}] =
+               failures
+
+      assert reason =~ "login gate"
+    end
+
     test "a walled engine is skipped and the engines that answered carry the round" do
       searches = [
         %{engine: Neuron.SearchTest.SocialEngine, query: "acme CTO"},
@@ -339,15 +380,25 @@ defmodule Neuron.SearchTest do
       assert reasons[Neuron.SearchTest.LoginEngine] =~ "login gate"
     end
 
-    test "errors only when every search fails" do
-      assert {:error, {:search_unavailable, reason: {:all_searches_failed, _}}} =
-               Neuron.Search.orchestrate([%{engine: Neuron.SearchTest.LoginEngine, query: "q"}],
-                 engines: [Neuron.SearchTest.LoginEngine],
+    test "errors only when every engine failed, and names each one" do
+      searches = [
+        %{engine: Neuron.SearchTest.LoginEngine, query: "q"},
+        %{engine: Neuron.SearchTest.WalledEngine, query: "q"}
+      ]
+
+      assert {:error, {:search_unavailable, reason: {:all_searches_failed, failures}}} =
+               Neuron.Search.orchestrate(searches,
+                 engines: [Neuron.SearchTest.LoginEngine, Neuron.SearchTest.WalledEngine],
                  handles: [%{provider: :fake, session: nil}],
                  pages_per_session: 2,
-                 page_adapter: Neuron.SearchTest.TranscriptAgent,
+                 page_adapter: Neuron.SearchTest.MixedAgent,
                  model_provider: Neuron.SearchTest.TeamHarvestModel
                )
+
+      assert Map.new(failures, &{&1.engine, &1.kind}) == %{
+               Neuron.SearchTest.LoginEngine => :login_gate,
+               Neuron.SearchTest.WalledEngine => :bot_check
+             }
     end
   end
 end
