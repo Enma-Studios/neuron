@@ -70,7 +70,8 @@ defmodule Neuron.UsageTest do
              prompt_tokens: 1250,
              completion_tokens: 170,
              browser_sessions: 2,
-             browser_seconds: 16.5
+             browser_seconds: 16.5,
+             graph_conflicts: 0
            }
 
     assert [%{label: "glm-5.3-flash", model_calls: 3, prompt_tokens: 1250}] = usage.models

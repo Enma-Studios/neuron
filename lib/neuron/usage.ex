@@ -36,7 +36,8 @@ defmodule Neuron.Usage do
     prompt_tokens: 0,
     completion_tokens: 0,
     browser_sessions: 0,
-    browser_seconds: 0.0
+    browser_seconds: 0.0,
+    graph_conflicts: 0
   }
 
   @doc "Record one model call's token usage against its run and stage."
@@ -53,6 +54,15 @@ defmodule Neuron.Usage do
       opts
     )
   end
+
+  @doc """
+  Record one graph write that exhausted its conflict retries.
+
+  Evidence was gathered and then lost, so the run must say so rather than
+  look clean. Counted only when the retries ran out: a conflict the retry
+  absorbed cost time, not data.
+  """
+  def record_conflict(opts), do: record(%{kind: "graph_conflict", label: "dgraph"}, opts)
 
   @doc "Record one browser session's wall time against its run and stage."
   def record_browser(seconds, opts) do
@@ -101,7 +111,8 @@ defmodule Neuron.Usage do
 
   @doc """
   What `run_id` and the children it dispatched spent, per model, per
-  provider, per stage, and in total.
+  provider, per stage, and in total, including graph writes that lost their
+  entity to a concurrent writer and ran out of retries.
   """
   def snapshot(run_id) do
     entries =
@@ -187,6 +198,9 @@ defmodule Neuron.Usage do
             | browser_sessions: acc.browser_sessions + 1,
               browser_seconds: acc.browser_seconds + (entry.seconds || 0.0)
           }
+
+        "graph_conflict" ->
+          %{acc | graph_conflicts: acc.graph_conflicts + 1}
 
         _ ->
           acc

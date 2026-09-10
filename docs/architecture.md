@@ -20,7 +20,7 @@ Oban retries a failed stage up to five attempts using its backoff. An ordinary e
 
 ## Recovery and side effects
 
-Execution is at least once. A crash after an external request but before its checkpoint can repeat the request. Version checks prevent stale output from changing the FSM; they cannot undo a request already sent. Dgraph writes use stable external identities with an `@upsert` index, resolving all blank-node references in a single mutation. New SQL code does not migrate or deduplicate pre-existing Dgraph nodes that lack those identities.
+Execution is at least once. A crash after an external request but before its checkpoint can repeat the request. Version checks prevent stale output from changing the FSM; they cannot undo a request already sent. Dgraph writes use stable external identities with an `@upsert` index, resolving all blank-node references in a single mutation. Concurrent ingestion children routinely upsert overlapping entities, so a Dgraph transaction abort is retried with bounded exponential backoff rather than failing the write; a conflict that exhausts its retries is counted against the run and visible in `get_run/1`. New SQL code does not migrate or deduplicate pre-existing Dgraph nodes that lack those identities.
 
 Oban's configured Lifeline handles orphaned executing jobs; configure its rescue age above your maximum legitimate job duration. A process killed during its final attempt can be discarded by Oban before application failure handling runs. `get_run/1` and `resume_run/1` reconcile that discarded job into a failed run using its version before returning or retrying. SQLite is for local iteration; configure Postgres for distributed operation.
 
