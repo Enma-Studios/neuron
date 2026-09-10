@@ -1,5 +1,14 @@
 defmodule Neuron.Search.Google do
-  @moduledoc "Google search rendered in a browser page."
+  @moduledoc """
+  Google search rendered in a browser page.
+
+  Available but switched off by default: from Browser Use cloud addresses
+  every query redirects to the `/sorry/` bot check, measured seven times
+  out of seven in one run and four out of four in another, so the engine
+  contributes nothing and is reported as a skipped engine on every query.
+  Re-enable it through `:neuron, :search, :engines` from an address it
+  serves results to, which a local browser provider may be (`neuron-02`).
+  """
   @behaviour Neuron.Search.Engine
 
   import Neuron.Search.Engine, only: [html_entities: 1, text: 1]

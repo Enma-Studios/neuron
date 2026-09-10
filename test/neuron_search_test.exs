@@ -152,6 +152,36 @@ defmodule Neuron.SearchTest do
     end
   end
 
+  describe "the default engine set" do
+    test "is DuckDuckGo and Yandex, and no engine that needs a login or fails a bot check" do
+      # The application default and the compiled fallback must agree, or the
+      # engine set depends on whether config was loaded.
+      configured = Application.get_env(:neuron, :search, [])[:engines]
+
+      assert Neuron.Search.engines() == [Neuron.Search.DuckDuckGo, Neuron.Search.Yandex]
+      assert configured == [Neuron.Search.DuckDuckGo, Neuron.Search.Yandex]
+    end
+
+    test "never contains a walled or logged-in engine" do
+      # An edit that puts one of these back must fail here rather than in a
+      # billed run: LinkedIn and X need a logged-in profile, Reddit redirects
+      # cloud addresses to a login wall, and Google bot-checks every query.
+      for engine <- [
+            Neuron.Search.LinkedIn,
+            Neuron.Search.X,
+            Neuron.Search.Reddit,
+            Neuron.Search.Google
+          ] do
+        refute engine in Neuron.Search.engines(),
+               "#{inspect(engine)} must not be enabled by default"
+      end
+    end
+
+    test "an engine switched off by default is still supported when asked for" do
+      assert Neuron.Search.engines(engines: [Neuron.Search.Google]) == [Neuron.Search.Google]
+    end
+  end
+
   test "every engine exposes the shared behaviour surface" do
     for engine <- [
           Neuron.Search.DuckDuckGo,

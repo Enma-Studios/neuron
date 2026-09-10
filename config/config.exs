@@ -34,10 +34,7 @@ config :neuron,
   search: [
     engines: [
       Neuron.Search.DuckDuckGo,
-      Neuron.Search.Google,
-      Neuron.Search.Yandex,
-      Neuron.Search.LinkedIn,
-      Neuron.Search.X
+      Neuron.Search.Yandex
     ]
   ],
   limits: [max_runs: 32],
