@@ -26,7 +26,8 @@ Configure the live services in your shell or application's runtime configuration
 export ZAI_API_KEY='...'
 export BROWSER_USE_API_KEY='...'
 mix neuron.models.fetch
-# Downloads pinned intfloat/multilingual-e5-small files into priv/models.
+# Downloads pinned intfloat/multilingual-e5-small files into Neuron's priv/models,
+# resolved the same way the loader resolves it, standalone or as a dependency.
 
 ```
 

@@ -9,7 +9,9 @@ defmodule Mix.Tasks.Neuron.Models.Fetch do
     config = Application.fetch_env!(:neuron, :embeddings)
     model = Keyword.fetch!(config, :model)
     revision = Keyword.fetch!(config, :revision)
-    directory = Path.expand(Keyword.fetch!(config, :directory), "priv")
+    # Resolved by the loader's own function, so the fetch always writes
+    # where the application reads, as a dependency as well as standalone.
+    directory = Neuron.Embedding.directory()
     File.mkdir_p!(directory)
 
     for file <- @files do
@@ -29,7 +31,7 @@ defmodule Mix.Tasks.Neuron.Models.Fetch do
     end
 
     File.write!(
-      Path.join(directory, "neuron_model.json"),
+      Neuron.Embedding.manifest_path(),
       Jason.encode!(%{model: model, revision: revision})
     )
 
