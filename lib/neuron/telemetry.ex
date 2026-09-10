@@ -53,6 +53,7 @@ defmodule Neuron.Telemetry do
       :agent_id,
       :task_id,
       :operation_id,
+      :stage,
       :attempt
     ])
     |> Map.new()
@@ -69,6 +70,7 @@ defmodule Neuron.Telemetry do
       :agent_id,
       :task_id,
       :operation_id,
+      :stage,
       :attempt
     ])
     |> Map.put_new(:trace_id, trace_id())

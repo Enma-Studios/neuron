@@ -5,6 +5,11 @@
 - `Neuron.start_run(profile, input, opts \\ [])` returns `{:ok, id}` after the initial machine, event, and job commit.
 - `Neuron.run(profile, input, opts \\ [])` starts and awaits a run.
 - `Neuron.get_run(id)` returns saved input, profile, state (`status`), version, output (`result`), and error. Available lead/profile fields are also exposed at the top level. Missing IDs raise `Ecto.NoResultsError`.
+- `get_run/1` also returns `usage`, and `error_class` when the run carries an error. Both are additive; no existing key changed shape.
+
+`usage` is `%{models: [...], browser: [...], by_stage: %{...}, total: %{...}}`. Every entry counts `model_calls`, `prompt_tokens`, `completion_tokens`, `browser_sessions` and `browser_seconds`; `models` groups by model id and `browser` by provider, each under `label`. `by_stage` is keyed by the stage name that spent it, so a stage that fires per source accumulates across its runs. Totals include the ingestion children the run dispatched, not only its own calls, because a campaign's cost is the cost of its tree. Usage is recorded in SQL as it is spent, since each stage is a separate Oban job in its own process. Note that `completion_tokens` includes the model's reasoning tokens, which is most of them at the configured `reasoning_effort`.
+
+`error_class` is `:storage`, `:model`, `:browser`, `:budget`, `:search`, or `:unknown`, and is absent when there is no error. An error shape Neuron does not recognise classifies as `:unknown` rather than being guessed into the nearest familiar bucket. Nothing raises `:budget` today: it is reserved for a cost cap, which is not implemented.
 - `Neuron.await_run(id, timeout \\ 120_000)` returns `{:ok, snapshot}`, `{:needs_input, snapshot}`, `{:error, snapshot}`, or `{:error, :timeout}`. Waiting polls SQL; use asynchronous IDs from web requests.
 - `Neuron.provide_run(id, input)` merges supplied answers and resumes a run waiting for input.
 - `Neuron.cancel_run(id)` commits cancellation. Already-running external requests may finish, but their stale version cannot advance the run.
