@@ -29,11 +29,13 @@ defmodule Neuron.Browser.Scripting do
       href: a.href,
       label: (a.innerText || a.getAttribute('aria-label') || '').trim().slice(0, 200)
     }));
+    const source = document.documentElement.outerHTML;
     return {
       url: location.href,
       title: document.title,
       markdown: markdown.slice(0, 16000),
       text: (section.innerText || '').slice(0, 8000),
+      document: source.length < 32000 ? source : '',
       links: links
     };
   })()
@@ -52,7 +54,15 @@ defmodule Neuron.Browser.Scripting do
     end
   end
 
-  @doc "The JavaScript that returns url, title, section markdown, section text, and links."
+  @doc """
+  The JavaScript that returns url, title, section markdown, section text,
+  links, and the whole document when it is small.
+
+  A bot check, a consent wall and a login page are all tiny compared with a
+  rendered results page, so a bounded copy of the document travels back for
+  the engine's `blocked?/1` and `gated?/1` markers to be read. Anything
+  large is a real page and is never shipped whole.
+  """
   def extraction_script, do: @extraction_script
 
   @doc """
