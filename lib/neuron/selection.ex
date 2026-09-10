@@ -48,16 +48,34 @@ defmodule Neuron.Selection do
              %{"$v" => vector, "$space" => Neuron.Embedding.space()},
              opts
            ) do
-      ranked =
+      scored =
         Neuron.GraphSearch.fuse(lexical, semantic)
         |> Enum.map(&score(&1, campaign, vector, opts))
-        |> Enum.reject(&is_nil/1)
+
+      ranked =
+        scored
+        |> Enum.filter(&is_map/1)
         |> Enum.sort_by(&{-&1.contact_priority, -&1.fit_score, &1.person_id})
 
-      {:ok, ranked}
+      # People who matched the campaign but had no observed way to reach
+      # them. Counted, not discarded silently, so a caller can tell "no
+      # companies matched" from "companies matched, no contact channel".
+      withheld = Enum.count(scored, &(&1 == :no_contact_channel))
+
+      {:ok, ranked, withheld}
     end
   end
 
+  @doc """
+  Score one candidate: a lead map, `nil` when the person does not match the
+  campaign, or `:no_contact_channel` when they match but have no observed
+  contact channel and `require_contact_channel` is on.
+
+  `require_contact_channel` defaults to `true`, which is the behaviour every
+  existing caller gets. Set it to `false` when the caller resolves contacts
+  itself: the person is then returned with `observed_email: nil` and no
+  channels, and everything else about the lead is unchanged.
+  """
   def score(record, campaign, vector, opts \\ []) do
     claims = Neuron.Knowledge.resolve(record["assertions"] || [])
     facts = Map.new(claims, fn {key, c} -> {key, c["claim_value"]} end)
@@ -85,71 +103,89 @@ defmodule Neuron.Selection do
 
     channels = email_channels ++ social_channels
 
-    valid =
+    # Matching the campaign and having an observed way to reach the person
+    # are two different questions, and the host answers the second one
+    # itself through its contact provider waterfall.
+    matched =
       facts["name"] && employer != "" && employer != campaign.seller_profile.domain &&
-        channels != [] && employment &&
+        employment &&
         (employment["authority"] || 0) >= 0.8 &&
         role > 0 && geography > 0 &&
         not Enum.any?(target.exclusions, &contains?(text, &1))
 
-    if valid do
-      cosine = cosine(vector, record[Neuron.Embedding.field()])
-      market = 0.5 * match_terms(target.markets, text) + 0.5 * max(cosine, 0.0)
+    require_channel? = Keyword.get(opts, :require_contact_channel, true)
 
-      observed =
-        Enum.map(Map.values(claims), & &1["observed_at"])
-        |> Enum.reject(&is_nil/1)
-        |> Enum.max(fn -> nil end)
+    cond do
+      not matched ->
+        nil
 
-      components = %{
-        market: market,
-        role: role,
-        geography: geography,
-        evidence:
-          Enum.sum(Enum.map(Map.values(claims), &(&1["authority"] || 0.0))) /
-            max(map_size(claims), 1),
-        freshness: freshness(observed, Keyword.get(opts, :now, DateTime.utc_now()))
-      }
+      channels == [] and require_channel? ->
+        :no_contact_channel
 
-      weights =
-        Keyword.get(
-          opts,
-          :weights,
-          Application.get_env(:neuron, :selection, [])[:weights] || @weights
-        )
+      true ->
+        cosine = cosine(vector, record[Neuron.Embedding.field()])
+        market = 0.5 * match_terms(target.markets, text) + 0.5 * max(cosine, 0.0)
 
-      score =
-        Enum.sum(Enum.map(weights, fn {key, weight} -> Map.fetch!(components, key) * weight end))
+        observed =
+          Enum.map(Map.values(claims), & &1["observed_at"])
+          |> Enum.reject(&is_nil/1)
+          |> Enum.max(fn -> nil end)
 
-      threshold = Keyword.get(opts, :selection_threshold, 0.5)
-
-      if score >= threshold do
-        result = %{
-          person_id: record["external_id"],
-          person_uid: record["uid"],
-          person_name: facts["name"],
-          title: title,
-          email: if(verified_email, do: email, else: nil),
-          contact_channels: channels,
-          preferred_channel: hd(channels).kind,
-          contact_priority: 1.0 / (1 + channel_rank(hd(channels).kind)),
-          organization: employer,
-          location: location,
-          fit_score: score,
-          score_breakdown: components,
-          semantic_similarity: cosine,
-          evidence: Map.values(claims),
-          evidence_urls: Enum.map(Map.values(claims), & &1["url"]) |> Enum.uniq(),
-          observed_at: observed
+        components = %{
+          market: market,
+          role: role,
+          geography: geography,
+          evidence:
+            Enum.sum(Enum.map(Map.values(claims), &(&1["authority"] || 0.0))) /
+              max(map_size(claims), 1),
+          freshness: freshness(observed, Keyword.get(opts, :now, DateTime.utc_now()))
         }
 
-        Neuron.Telemetry.emit(
-          [:lead, :ranked],
-          Map.merge(Neuron.Telemetry.trace_metadata(opts), result)
-        )
+        weights =
+          Keyword.get(
+            opts,
+            :weights,
+            Application.get_env(:neuron, :selection, [])[:weights] || @weights
+          )
 
-        result
-      end
+        score =
+          Enum.sum(
+            Enum.map(weights, fn {key, weight} -> Map.fetch!(components, key) * weight end)
+          )
+
+        threshold = Keyword.get(opts, :selection_threshold, 0.5)
+
+        if score >= threshold do
+          observed_email = if verified_email, do: email, else: nil
+
+          result = %{
+            person_id: record["external_id"],
+            person_uid: record["uid"],
+            person_name: facts["name"],
+            title: title,
+            email: observed_email,
+            observed_email: observed_email,
+            contact_channels: channels,
+            preferred_channel: (channels != [] && hd(channels).kind) || nil,
+            contact_priority:
+              (channels != [] && 1.0 / (1 + channel_rank(hd(channels).kind))) || 0.0,
+            organization: employer,
+            location: location,
+            fit_score: score,
+            score_breakdown: components,
+            semantic_similarity: cosine,
+            evidence: Map.values(claims),
+            evidence_urls: Enum.map(Map.values(claims), & &1["url"]) |> Enum.uniq(),
+            observed_at: observed
+          }
+
+          Neuron.Telemetry.emit(
+            [:lead, :ranked],
+            Map.merge(Neuron.Telemetry.trace_metadata(opts), result)
+          )
+
+          result
+        end
     end
   end
 

@@ -27,11 +27,11 @@ defmodule Neuron.CampaignPipeline do
   end
 
   def stage(:retrieve, data, opts) do
-    with {:ok, candidates} <- Neuron.Selection.candidates(data.campaign, opts),
+    with {:ok, candidates, withheld} <- Neuron.Selection.candidates(data.campaign, opts),
          {:ok, leads} <-
            Neuron.Selection.reserve(data.campaign.campaign_id, opts[:run_id], candidates) do
       # Every campaign makes a search pass, including when existing knowledge matches.
-      {:ok, %{data | leads: leads}}
+      {:ok, Map.merge(data, %{leads: leads, withheld_contact: withheld})}
     end
   end
 
@@ -169,10 +169,10 @@ defmodule Neuron.CampaignPipeline do
   end
 
   def stage(:rank, data, opts) do
-    with {:ok, candidates} <- Neuron.Selection.candidates(data.campaign, opts),
+    with {:ok, candidates, withheld} <- Neuron.Selection.candidates(data.campaign, opts),
          {:ok, leads} <-
            Neuron.Selection.reserve(data.campaign.campaign_id, opts[:run_id], candidates) do
-      data = %{data | leads: leads}
+      data = Map.merge(data, %{leads: leads, withheld_contact: withheld})
 
       cond do
         length(leads) >= data.campaign.lead_count ->
@@ -187,14 +187,19 @@ defmodule Neuron.CampaignPipeline do
     end
   end
 
-  def stage(:draft, %{leads: []} = data, _opts),
-    do:
-      {:ok,
-       Map.put(
-         data,
-         :summary,
-         "No new people met the campaign criteria with a verified professional contact channel."
-       )}
+  # Zero leads has two causes and the host needs to know which. Nothing
+  # matched is a targeting problem; matched-but-unreachable is a contact
+  # problem the host can solve itself with `require_contact_channel: false`.
+  def stage(:draft, %{leads: []} = data, _opts) do
+    summary =
+      if Map.get(data, :withheld_contact, 0) > 0 do
+        "Companies matched the campaign criteria, but no contact channel was observed for any candidate."
+      else
+        "No companies matched the campaign criteria."
+      end
+
+    {:ok, Map.put(data, :summary, summary)}
+  end
 
   def stage(:draft, data, opts) do
     with {:ok, output} <-
@@ -251,8 +256,8 @@ defmodule Neuron.CampaignPipeline do
           "email_subject" => lead.email_subject,
           "email_body" => lead.email_body,
           "preferred_channel" => lead.preferred_channel,
-          "outreach_body" => lead.outreach.body,
-          "outreach_subject" => lead.outreach.subject,
+          "outreach_body" => lead.outreach && lead.outreach.body,
+          "outreach_subject" => lead.outreach && lead.outreach.subject,
           "score_breakdown" => Jason.encode!(lead.score_breakdown),
           "semantic_similarity" => lead.semantic_similarity,
           "contact_channels" =>

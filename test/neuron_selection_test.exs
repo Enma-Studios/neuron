@@ -45,11 +45,13 @@ defmodule Neuron.SelectionTest do
     assert matched.fit_score > unrelated.fit_score
     assert matched.score_breakdown.market > 0
 
+    # Still withheld by default, now reported as the reason it was withheld
+    # rather than as an unmatched person.
     assert Neuron.Selection.score(
              Map.put(record, "assertions", Enum.reject(claims, &(&1["predicate"] == "email"))),
              campaign,
              [1.0, 0.0]
-           ) == nil
+           ) == :no_contact_channel
 
     refute Neuron.Selection.company_email?("info@buyer.example", "buyer.example")
     refute Neuron.Selection.company_email?("ada@gmail.com", "buyer.example")
@@ -130,7 +132,7 @@ defmodule Neuron.SelectionTest do
              end),
              campaign,
              [1.0, 0.0]
-           ) == nil
+           ) == :no_contact_channel
   end
 
   test "an alternate approved role and geography are full eligibility matches" do
