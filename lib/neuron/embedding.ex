@@ -11,6 +11,85 @@ defmodule Neuron.Embedding do
 
   def provider, do: Application.fetch_env!(:neuron, :embeddings) |> Keyword.fetch!(:provider)
 
+  @manifest "neuron_model.json"
+
+  @doc """
+  The one directory the pinned embedding model lives in.
+
+  `mix neuron.models.fetch` used to resolve this against the current working
+  directory while the loader resolved it against Neuron's own application
+  directory. Those agree only when Neuron is the project being run. As a
+  dependency the fetch wrote into the host's `priv` and the loader then read
+  Neuron's, so the documented setup always ended in `embedding model
+  missing`, naming the command that had just succeeded. Both resolve it
+  here now, so they cannot drift apart again.
+  """
+  def directory do
+    _ = Application.load(:neuron)
+    Application.app_dir(:neuron, "priv/" <> Keyword.fetch!(config(), :directory))
+  end
+
+  @doc "Path of the manifest the fetch task writes and the loader verifies."
+  def manifest_path, do: Path.join(directory(), @manifest)
+
+  @doc """
+  The fetched model's manifest, or why it cannot be used.
+
+  A model in the wrong place is reported separately from one that was never
+  fetched: the first needs the fetch re-running against this application,
+  the second needs it running at all.
+  """
+  def manifest do
+    cond do
+      File.exists?(manifest_path()) ->
+        {:ok, manifest_path() |> File.read!() |> Jason.decode!()}
+
+      File.exists?(legacy_manifest_path()) ->
+        {:error, {:misplaced, legacy_manifest_path(), directory()}}
+
+      true ->
+        {:error, :missing}
+    end
+  end
+
+  @doc """
+  Verify the fetched model against configuration and return its directory.
+  Raises with the distinction between missing, misplaced, and mismatched.
+  """
+  def load! do
+    config = config()
+
+    case manifest() do
+      {:ok, %{"model" => model, "revision" => revision}} ->
+        expected = {Keyword.fetch!(config, :model), Keyword.fetch!(config, :revision)}
+
+        if {model, revision} != expected do
+          raise "embedding model at #{directory()} is #{model}@#{revision}, but " <>
+                  "#{elem(expected, 0)}@#{elem(expected, 1)} is configured; re-run mix neuron.models.fetch"
+        end
+
+        directory()
+
+      {:error, {:misplaced, found, expected}} ->
+        raise "embedding model found at #{found} but Neuron reads #{expected}; " <>
+                "re-run mix neuron.models.fetch so it writes where the loader looks"
+
+      {:error, :missing} ->
+        raise "embedding model missing at #{directory()}; " <>
+                "run mix neuron.models.fetch before starting Neuron"
+
+      {:ok, _other} ->
+        raise "embedding manifest at #{manifest_path()} is unreadable; re-run mix neuron.models.fetch"
+    end
+  end
+
+  # Where the fetch task used to write: relative to the working directory,
+  # which is the host's priv whenever Neuron is a dependency.
+  defp legacy_manifest_path,
+    do: Path.join(Path.expand(Keyword.fetch!(config(), :directory), "priv"), @manifest)
+
+  defp config, do: Application.fetch_env!(:neuron, :embeddings)
+
   def space do
     config = Application.fetch_env!(:neuron, :embeddings)
 
@@ -32,18 +111,7 @@ defmodule Neuron.Embedding.Local do
 
   def start_link(_opts) do
     config = Application.fetch_env!(:neuron, :embeddings)
-    directory = Application.app_dir(:neuron, "priv/" <> Keyword.fetch!(config, :directory))
-
-    unless File.exists?(Path.join(directory, "neuron_model.json")),
-      do: raise("embedding model missing; run mix neuron.models.fetch before starting Neuron")
-
-    manifest = File.read!(Path.join(directory, "neuron_model.json")) |> Jason.decode!()
-
-    true =
-      manifest["model"] == Keyword.fetch!(config, :model) and
-        manifest["revision"] == Keyword.fetch!(config, :revision)
-
-    repository = {:local, directory}
+    repository = {:local, Neuron.Embedding.load!()}
     {:ok, model} = Bumblebee.load_model(repository)
     {:ok, tokenizer} = Bumblebee.load_tokenizer(repository)
 
@@ -65,8 +133,7 @@ defmodule Neuron.Embedding.Local do
   @impl true
   def chunks(text) do
     config = Application.fetch_env!(:neuron, :embeddings)
-    directory = Application.app_dir(:neuron, "priv/" <> Keyword.fetch!(config, :directory))
-    {:ok, tokenizer} = Bumblebee.load_tokenizer({:local, directory})
+    {:ok, tokenizer} = Bumblebee.load_tokenizer({:local, Neuron.Embedding.directory()})
 
     tokens =
       tokenizer

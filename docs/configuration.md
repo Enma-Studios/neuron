@@ -84,7 +84,7 @@ Common options are `id:`, `trace_id:`, and `timeout:`. The timeout for `await_ru
 
 ## Local embeddings
 
-Run `mix neuron.models.fetch` to download pinned `intfloat/multilingual-e5-small` files into `priv/models/multilingual-e5-small`. The model uses 384 dimensions, mean pooling, and L2 normalization. Query inputs receive `query: `; documents receive `passage: `. See the [model card](https://huggingface.co/intfloat/multilingual-e5-small).
+Run `mix neuron.models.fetch` to download pinned `intfloat/multilingual-e5-small` files into `priv/models/multilingual-e5-small`. The task and the loader both resolve that directory through `Neuron.Embedding.directory/0`, which is Neuron's own application directory rather than the working directory, so a host application's fetch lands where its startup reads. Startup distinguishes a model that was never fetched from one sitting in the wrong `priv` and from one whose manifest does not match configuration. The model uses 384 dimensions, mean pooling, and L2 normalization. Query inputs receive `query: `; documents receive `passage: `. See the [model card](https://huggingface.co/intfloat/multilingual-e5-small).
 
 Configure `:neuron, :embeddings` through application config: `model`, `revision`, `directory` (relative to priv), `dimensions`, `batch_size` (4), and `sequence_length` (512). Run the download task before building a release. Startup checks the local manifest and fails if it is missing or does not match configuration. EXLA requires a C++ compiler. Model weights are not committed to Git.
 
