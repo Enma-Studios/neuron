@@ -119,10 +119,40 @@ defmodule Neuron.RecoveryTest do
       set: [state: "discarded"]
     )
 
+    # A read must not change it. A host polls `get_run/1` and a poll that
+    # fails a live run is not a read.
+    assert %{status: :planning, error: nil} = Neuron.get_run(id)
+    assert Neuron.FSM.get(id).state == "planning"
+
+    # Reconciliation is asked for, and only then does the run fail.
+    assert %{status: :failed, error: :job_abandoned} = Neuron.reconcile_run(id)
     assert %{status: :failed, error: :job_abandoned} = Neuron.get_run(id)
+
     assert {:ok, _} = Neuron.resume_run(id)
     Oban.drain_queue(Neuron.Oban, queue: :orchestrators, with_recursion: true)
     assert %{status: :complete, leads: []} = Neuron.get_run(id)
+  end
+
+  test "get_run/1 does not write, even repeatedly, and await_run/2 still reconciles" do
+    import Ecto.Query
+    {:ok, id} = Neuron.start_run(Neuron.Coordinator.Default, %{leads: []})
+
+    Neuron.Persistence.repo().update_all(from(j in Oban.Job, where: j.args["machine_id"] == ^id),
+      set: [state: "discarded"]
+    )
+
+    before = Neuron.FSM.get(id)
+    for _ <- 1..5, do: Neuron.get_run(id)
+    after_reads = Neuron.FSM.get(id)
+
+    # Nothing moved: not the state, not the version, not even the row.
+    assert after_reads.state == before.state
+    assert after_reads.version == before.version
+    assert after_reads.updated_at == before.updated_at
+    assert Neuron.events(id) |> length() == Neuron.events(id) |> length()
+
+    # Waiting is not reading, so it notices and does not spin to its timeout.
+    assert {:error, %{status: :failed, error: :job_abandoned}} = Neuron.await_run(id, 5_000)
   end
 
   test "rejects process-local data before persistence" do

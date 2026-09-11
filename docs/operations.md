@@ -45,6 +45,12 @@ The default Ecto repo emits `[:neuron, :repo, :query]`; a host repo uses its own
 
 Run options contain a stable trace ID; run and task IDs correlate source/model activity. By default large telemetry payloads are summarized as hashes and byte sizes. `capture_payloads: true` is explicit. Business selection reasons belong in lead results; telemetry is not a promise to expose a model's private internal reasoning.
 
+## Polling a run
+
+`Neuron.get_run/1` never writes, so a dashboard or poller can read a live run at any rate without changing it.
+
+Reconciling a discarded or cancelled worker job into a failed run is a write and lives in `Neuron.reconcile_run/1`, which returns the same snapshot. Something has to call it, or a run whose Oban job was discarded stays `processing` with nobody working on it. `await_run/2` and `resume_run/1` do, and so does the campaign pipeline when it collects its ingestion children. A host that only polls should call `reconcile_run/1` on a schedule, or on a run that has not advanced for longer than its longest legitimate stage, rather than on every read.
+
 ## History and export
 
 Rendered prompts, model request/response summaries, and transition events are emitted through the root `[:neuron]` telemetry event with correlation IDs. This telemetry is independent of Oban's finished-job pruning. `Neuron.events(id)` returns durable transition history; telemetry consumers receive prompt and model payloads according to the `capture_payloads` setting.

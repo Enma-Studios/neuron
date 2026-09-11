@@ -4,7 +4,7 @@
 
 - `Neuron.start_run(profile, input, opts \\ [])` returns `{:ok, id}` after the initial machine, event, and job commit.
 - `Neuron.run(profile, input, opts \\ [])` starts and awaits a run.
-- `Neuron.get_run(id)` returns saved input, profile, state (`status`), version, output (`result`), and error. Available lead/profile fields are also exposed at the top level. Missing IDs raise `Ecto.NoResultsError`.
+- `Neuron.get_run(id)` returns saved input, profile, state (`status`), version, output (`result`), and error. Available lead/profile fields are also exposed at the top level. Missing IDs raise `Ecto.NoResultsError`. **It never writes**, so a poller can look at a live run as often as it likes without changing it.
 - `get_run/1` also returns `usage`, and `error_class` when the run carries an error. Both are additive; no existing key changed shape.
 
 `usage` is `%{models: [...], browser: [...], by_stage: %{...}, total: %{...}}`. Every entry counts `model_calls`, `prompt_tokens`, `completion_tokens`, `browser_sessions`, `browser_seconds` and `graph_conflicts`; `models` groups by model id and `browser` by provider, each under `label`. `by_stage` is keyed by the stage name that spent it, so a stage that fires per source accumulates across its runs. Totals include the ingestion children the run dispatched, not only its own calls, because a campaign's cost is the cost of its tree. Usage is recorded in SQL as it is spent, since each stage is a separate Oban job in its own process. Note that `completion_tokens` includes the model's reasoning tokens, which is most of them at the configured `reasoning_effort`.
@@ -16,7 +16,9 @@
 - `Neuron.provide_run(id, input)` merges supplied answers and resumes a run waiting for input.
 - `Neuron.cancel_run(id)` commits cancellation. Already-running external requests may finish, but their stale version cannot advance the run.
 - `Neuron.resume_run(id)` resumes a failed pipeline from its checkpoint or replans an ordinary coordinator.
-- `Neuron.reconcile_run(id)` reflects a discarded/cancelled current worker job as a failed run; inspection and resumption also perform this reconciliation.
+- `Neuron.reconcile_run(id)` reflects a discarded or cancelled current worker job as a failed run, then returns the same snapshot `get_run/1` returns. This is a **write**: call it when something must act on a run that may have been abandoned, not when merely displaying one.
+
+`get_run/1` used to reconcile as a side effect, so every read of a live run could fail it. It no longer does. `await_run/2` and `resume_run/1` still reconcile, because waiting and resuming are not reading: a run whose worker was discarded has to be noticed or `await_run/2` would spin until its timeout. A caller that wants the old behaviour calls `reconcile_run/1` in place of `get_run/1`.
 - `Neuron.events(id)` returns SQL history ordered by event ID.
 - `Neuron.list_runs()` returns saved machine snapshots. For large deployments, query the repository with application-specific pagination instead.
 - `Neuron.spawn_agent(parent_id, role, worker, input, opts \\ [])` starts a separately durable delegated worker; `get_agent/1` and `cancel_agent/1` use the run APIs.
