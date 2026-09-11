@@ -3,10 +3,26 @@
 Branch `experiment/layered-context`, not merged, `main` untouched. Run on 2026-09-10 against
 `v0.2.1`.
 
-**Recommendation: iterate.** The layering works exactly as specified and prefix caching is
-real, measurable and large in isolation. It does not pay for itself as built, for a reason
-that is fixable, and the arms could not be separated on any outcome metric because run to run
-variance swamps them. Details in the last two sections.
+**Recommendation: iterate. Accepted by the owner on 2026-09-10, to be picked up later.** The
+branch is kept, unmerged, with no pull request.
+
+Two things are settled for whoever picks it up:
+
+- **The next attempt replaces rules in the task prompts rather than restating them.** Layer 2
+  currently repeats product-wide rules the task prompts already carry, so the prefix is
+  additive and caching a cost it created. Deleting those rules from the task prompt files, so
+  they are stated once in the cached prefix, is the change that decides whether the
+  restructure pays for itself. It was excluded from this attempt by the brief, and it is the
+  first thing to do in the next one.
+- **Completion tokens are the cost to attack, not input.** This workload is completion
+  dominated, so prefix caching addresses the cheaper half of the smaller half. If the
+  motivation is cost, the numbers to go after are completion tokens and `reasoning_effort`.
+  Prefix caching is worth having for what it makes possible, not for what it saves.
+
+The layering works exactly as specified and prefix caching is real, measurable and large in
+isolation. It does not pay for itself as built, for the reason above, and the arms could not
+be separated on any outcome metric because run to run variance swamps them. Details in the
+last two sections.
 
 ## What was built
 
