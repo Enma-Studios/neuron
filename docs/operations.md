@@ -72,3 +72,11 @@ NEURON_TEST_POSTGRES_URL=postgres://user:password@localhost/neuron_test mix test
 The Podman script creates and removes its own temporary Postgres container. The suite verifies the same Ecto migration and FSM operations with Oban's Basic engine.
 
 A live research run additionally requires functioning ZAI, Browser Use, Chromium, and the downloaded local embedding model. Unit fixtures do not verify those services. Infrastructure errors remain errors and must be fixed in the environment.
+
+## Releases
+
+Published tags are never moved. A tag that has been pushed is a fixed point: someone may already have fetched it, pinned a dependency to it, or built from it, and a tag that points somewhere new makes two checkouts of the same name disagree about what they contain. A release that needs a change gets the next tag, not the previous one back.
+
+This was learned by breaking it. `v0.2.3` was force-updated to pick up a later commit on 2026-09-10 and then restored to the commit it was published at, with the change cut as `v0.2.4` instead.
+
+The same rule is why git dependencies are pinned to tags rather than branches: `mix.lock` records a commit, but a branch reference lets the next `mix deps.get` resolve to a different one, which is the same problem one layer down.
