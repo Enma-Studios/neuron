@@ -1,0 +1,87 @@
+{
+  "error": "{:search_unavailable, [%{reason: \"bot check at https://html.duckduckgo.com/html/?q=%22hiring+our+first+engineer%22+%28inurl%3Acareers+OR+inurl%3Ajobs+OR+inurl%3Aabout%29\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: \\\"hiring our first engineer\\\" (inurl:careers OR inurl:jobs OR inurl:about)\"}, %{reason: \"bot check at https://html.duckduckgo.com/html/?q=%22non-technical+founders%22+%22meet+the+team%22+%28inurl%3Aabout+OR+inurl%3Ateam+OR+inurl%3Apeople%29\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: \\\"non-technical founders\\\" \\\"meet the team\\\" (inurl:about OR inurl:team OR inurl:people)\"}, %{reason: \"bot check at https://html.duckduckgo.com/html/?q=%22no+in-house+engineering+team%22+OR+%22without+an+engineering+team%22+%28inurl%3Aabout+OR+inurl%3Ateam%29\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: \\\"no in-house engineering team\\\" OR \\\"without an engineering team\\\" (inurl:about OR inurl:team)\"}, %{reason: \"bot check at https://html.duckduckgo.com/html/?q=%22looking+for+a+development+partner%22+%28inurl%3Acontact+OR+inurl%3Aabout%29\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: \\\"looking for a development partner\\\" (inurl:contact OR inurl:about)\"}]}",
+  "status": "failed",
+  "graph": {
+    "sources": 0,
+    "assertions": 0,
+    "snapshots": 0,
+    "leads": 0,
+    "organizations": 0,
+    "people": 0,
+    "evidence": 0
+  },
+  "usage": {
+    "total": {
+      "prompt_tokens": 557,
+      "cached_tokens": 0,
+      "completion_tokens": 2158,
+      "model_calls": 1,
+      "graph_conflicts": 0,
+      "browser_sessions": 5,
+      "browser_seconds": 43.915
+    },
+    "browser": [
+      {
+        "label": "browser_use",
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 5,
+        "browser_seconds": 43.915
+      }
+    ],
+    "by_stage": {
+      "plan_search": {
+        "prompt_tokens": 557,
+        "cached_tokens": 0,
+        "completion_tokens": 2158,
+        "model_calls": 1,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "search": {
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 5,
+        "browser_seconds": 43.915
+      }
+    },
+    "models": [
+      {
+        "label": "glm-5.3-flash",
+        "prompt_tokens": 557,
+        "cached_tokens": 0,
+        "completion_tokens": 2158,
+        "model_calls": 1,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      }
+    ]
+  },
+  "summary": false,
+  "arm": "baseline",
+  "trial": "2",
+  "verbatim": {
+    "checked": 0,
+    "rate": null,
+    "passed": 0,
+    "with_source_edge": 0,
+    "total_assertions": 0
+  },
+  "leads": [],
+  "run_id": "6408844d-334b-4abe-834e-700064a8bae8",
+  "elapsed_seconds": 175.1,
+  "browser_cost_usd": 0.0047,
+  "browser_sessions_billed": 5,
+  "result_status": false,
+  "stop_reason": false,
+  "returned_count": 0,
+  "failures": []
+}

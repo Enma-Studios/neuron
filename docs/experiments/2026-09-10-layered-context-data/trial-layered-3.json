@@ -1,0 +1,118 @@
+{
+  "error": "nil",
+  "status": "complete",
+  "graph": {
+    "sources": 6,
+    "assertions": 53,
+    "snapshots": 6,
+    "leads": 0,
+    "organizations": 7,
+    "people": 0,
+    "evidence": 20
+  },
+  "usage": {
+    "total": {
+      "prompt_tokens": 48556,
+      "cached_tokens": 5568,
+      "completion_tokens": 69259,
+      "model_calls": 15,
+      "graph_conflicts": 0,
+      "browser_sessions": 10,
+      "browser_seconds": 65.83099999999999
+    },
+    "browser": [
+      {
+        "label": "browser_use",
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 10,
+        "browser_seconds": 65.83099999999999
+      }
+    ],
+    "by_stage": {
+      "fetch": {
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 6,
+        "browser_seconds": 27.125999999999998
+      },
+      "normalize": {
+        "prompt_tokens": 13776,
+        "cached_tokens": 3584,
+        "completion_tokens": 45892,
+        "model_calls": 7,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "plan_search": {
+        "prompt_tokens": 2250,
+        "cached_tokens": 448,
+        "completion_tokens": 10865,
+        "model_calls": 2,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "search": {
+        "prompt_tokens": 32530,
+        "cached_tokens": 1536,
+        "completion_tokens": 12502,
+        "model_calls": 6,
+        "graph_conflicts": 0,
+        "browser_sessions": 4,
+        "browser_seconds": 38.705
+      }
+    },
+    "models": [
+      {
+        "label": "glm-5.3-flash",
+        "prompt_tokens": 48556,
+        "cached_tokens": 5568,
+        "completion_tokens": 69259,
+        "model_calls": 15,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      }
+    ]
+  },
+  "summary": "No companies matched the campaign criteria.",
+  "arm": "layered",
+  "trial": "3",
+  "verbatim": {
+    "checked": 53,
+    "rate": 1.0,
+    "passed": 53,
+    "with_source_edge": 0,
+    "total_assertions": 53
+  },
+  "leads": [],
+  "run_id": "6200ab9d-ea2c-4f58-9d9b-cb5ba3ce1fde",
+  "elapsed_seconds": 500.3,
+  "browser_cost_usd": 0.0397,
+  "browser_sessions_billed": 10,
+  "result_status": "no_qualified_leads",
+  "stop_reason": "budget_exhausted",
+  "returned_count": 0,
+  "failures": [
+    {
+      "reason": "bot check at https://html.duckduckgo.com/html/?q=%22rebuilding+our+product%22+OR+%22rebuilding+our+platform%22+inurl%3Ablog+-medium.com+-github.com",
+      "kind": "bot_check",
+      "engine": "duckduckgo",
+      "query": "duckduckgo: \"rebuilding our product\" OR \"rebuilding our platform\" inurl:blog -medium.com -github.com"
+    },
+    {
+      "reason": "bot check at https://html.duckduckgo.com/html/?q=inurl%3Ateam+%22head+of+product%22+-linkedin",
+      "kind": "bot_check",
+      "engine": "duckduckgo",
+      "query": "duckduckgo: inurl:team \"head of product\" -linkedin"
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "error": "nil",
+  "status": "processing",
+  "graph": {
+    "sources": 5,
+    "assertions": 66,
+    "snapshots": 5,
+    "leads": 0,
+    "organizations": 4,
+    "people": 0,
+    "evidence": 32
+  },
+  "usage": {
+    "total": {
+      "prompt_tokens": 12239,
+      "cached_tokens": 3200,
+      "completion_tokens": 46430,
+      "model_calls": 8,
+      "graph_conflicts": 0,
+      "browser_sessions": 3,
+      "browser_seconds": 36.964
+    },
+    "browser": [
+      {
+        "label": "browser_use",
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 3,
+        "browser_seconds": 36.964
+      }
+    ],
+    "by_stage": {
+      "fetch": {
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 2,
+        "browser_seconds": 23.417
+      },
+      "normalize": {
+        "prompt_tokens": 8201,
+        "cached_tokens": 3200,
+        "completion_tokens": 36586,
+        "model_calls": 4,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "plan_search": {
+        "prompt_tokens": 557,
+        "cached_tokens": 0,
+        "completion_tokens": 2700,
+        "model_calls": 1,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "search": {
+        "prompt_tokens": 3481,
+        "cached_tokens": 0,
+        "completion_tokens": 7144,
+        "model_calls": 3,
+        "graph_conflicts": 0,
+        "browser_sessions": 1,
+        "browser_seconds": 13.547
+      }
+    },
+    "models": [
+      {
+        "label": "glm-5.3-flash",
+        "prompt_tokens": 12239,
+        "cached_tokens": 3200,
+        "completion_tokens": 46430,
+        "model_calls": 8,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      }
+    ]
+  },
+  "summary": false,
+  "arm": "baseline",
+  "trial": "4",
+  "verbatim": {
+    "checked": 66,
+    "rate": 1.0,
+    "passed": 66,
+    "with_source_edge": 0,
+    "total_assertions": 66
+  },
+  "leads": [],
+  "run_id": "e2dd9054-6618-4c15-a66c-e3710a6f32a2",
+  "elapsed_seconds": 1500.7,
+  "browser_cost_usd": 0.0105,
+  "browser_sessions_billed": 7,
+  "result_status": false,
+  "stop_reason": false,
+  "returned_count": 0,
+  "failures": []
+}

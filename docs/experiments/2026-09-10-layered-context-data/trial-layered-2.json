@@ -1,0 +1,87 @@
+{
+  "error": "{:search_unavailable, [%{reason: \"bot check at https://html.duckduckgo.com/html/?q=inurl%3Apeople+%22product+lead%22+email+-linkedin+-github\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: inurl:people \\\"product lead\\\" email -linkedin -github\"}, %{reason: \"bot check at https://html.duckduckgo.com/html/?q=inurl%3Astaff+%22head+of+product%22+email+-linkedin+-github\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: inurl:staff \\\"head of product\\\" email -linkedin -github\"}, %{reason: \"bot check at https://html.duckduckgo.com/html/?q=inurl%3Aleadership+%22CTO%22+%22get+in+touch%22+-linkedin+-github\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: inurl:leadership \\\"CTO\\\" \\\"get in touch\\\" -linkedin -github\"}, %{reason: \"bot check at https://html.duckduckgo.com/html/?q=inurl%3Acareers+%22founding+engineer%22+-linkedin+-indeed+-glassdoor+-github\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: inurl:careers \\\"founding engineer\\\" -linkedin -indeed -glassdoor -github\"}]}",
+  "status": "failed",
+  "graph": {
+    "sources": 0,
+    "assertions": 0,
+    "snapshots": 0,
+    "leads": 0,
+    "organizations": 0,
+    "people": 0,
+    "evidence": 0
+  },
+  "usage": {
+    "total": {
+      "prompt_tokens": 9691,
+      "cached_tokens": 2368,
+      "completion_tokens": 9860,
+      "model_calls": 6,
+      "graph_conflicts": 0,
+      "browser_sessions": 8,
+      "browser_seconds": 160.407
+    },
+    "browser": [
+      {
+        "label": "browser_use",
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 8,
+        "browser_seconds": 160.407
+      }
+    ],
+    "by_stage": {
+      "plan_search": {
+        "prompt_tokens": 2085,
+        "cached_tokens": 960,
+        "completion_tokens": 9193,
+        "model_calls": 2,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "search": {
+        "prompt_tokens": 7606,
+        "cached_tokens": 1408,
+        "completion_tokens": 667,
+        "model_calls": 4,
+        "graph_conflicts": 0,
+        "browser_sessions": 8,
+        "browser_seconds": 160.407
+      }
+    },
+    "models": [
+      {
+        "label": "glm-5.3-flash",
+        "prompt_tokens": 9691,
+        "cached_tokens": 2368,
+        "completion_tokens": 9860,
+        "model_calls": 6,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      }
+    ]
+  },
+  "summary": false,
+  "arm": "layered",
+  "trial": "2",
+  "verbatim": {
+    "checked": 0,
+    "rate": null,
+    "passed": 0,
+    "with_source_edge": 0,
+    "total_assertions": 0
+  },
+  "leads": [],
+  "run_id": "cabb77fe-b33c-47ea-be90-2b8fc6028dbc",
+  "elapsed_seconds": 420.2,
+  "browser_cost_usd": 0.0076,
+  "browser_sessions_billed": 8,
+  "result_status": false,
+  "stop_reason": false,
+  "returned_count": 0,
+  "failures": []
+}

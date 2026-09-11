@@ -1,0 +1,87 @@
+{
+  "error": "{:search_unavailable, [%{reason: \"bot check at https://html.duckduckgo.com/html/?q=%22hiring+our+first+engineer%22+-site%3Agithub.com+-site%3Alinkedin.com\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: \\\"hiring our first engineer\\\" -site:github.com -site:linkedin.com\"}, %{reason: \"bot check at https://html.duckduckgo.com/html/?q=inurl%3Aabout+%22no+in-house+engineers%22+OR+%22without+an+engineering+team%22+-site%3Agithub.com\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: inurl:about \\\"no in-house engineers\\\" OR \\\"without an engineering team\\\" -site:github.com\"}, %{reason: \"bot check at https://html.duckduckgo.com/html/?q=inurl%3Aabout+%22non-technical+founder%22+-site%3Agithub.com\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: inurl:about \\\"non-technical founder\\\" -site:github.com\"}, %{reason: \"bot check at https://html.duckduckgo.com/html/?q=inurl%3Acareers+%22founding+engineer%22+-site%3Agithub.com+-site%3Aindeed.com+-site%3Aglassdoor.com\", kind: :bot_check, engine: \"duckduckgo\", query: \"duckduckgo: inurl:careers \\\"founding engineer\\\" -site:github.com -site:indeed.com -site:glassdoor.com\"}]}",
+  "status": "failed",
+  "graph": {
+    "sources": 0,
+    "leads": 0,
+    "assertions": 0,
+    "people": 0,
+    "snapshots": 0,
+    "organizations": 0,
+    "evidence": 0
+  },
+  "usage": {
+    "total": {
+      "cached_tokens": 0,
+      "completion_tokens": 2674,
+      "prompt_tokens": 977,
+      "model_calls": 1,
+      "graph_conflicts": 0,
+      "browser_sessions": 5,
+      "browser_seconds": 43.55
+    },
+    "browser": [
+      {
+        "label": "browser_use",
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 5,
+        "browser_seconds": 43.55
+      }
+    ],
+    "by_stage": {
+      "plan_search": {
+        "cached_tokens": 0,
+        "completion_tokens": 2674,
+        "prompt_tokens": 977,
+        "model_calls": 1,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "search": {
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 5,
+        "browser_seconds": 43.55
+      }
+    },
+    "models": [
+      {
+        "label": "glm-5.3-flash",
+        "cached_tokens": 0,
+        "completion_tokens": 2674,
+        "prompt_tokens": 977,
+        "model_calls": 1,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      }
+    ]
+  },
+  "summary": false,
+  "run_id": "50a2c1e6-9451-4349-8e1e-f07319e8a3a7",
+  "leads": [],
+  "failures": [],
+  "stop_reason": false,
+  "returned_count": 0,
+  "arm": "layered",
+  "trial": "4",
+  "verbatim": {
+    "checked": 0,
+    "rate": null,
+    "passed": 0,
+    "with_source_edge": 0,
+    "total_assertions": 0
+  },
+  "elapsed_seconds": 180.1,
+  "browser_cost_usd": 0.0049,
+  "browser_sessions_billed": 5,
+  "result_status": false
+}

@@ -1,0 +1,145 @@
+{
+  "error": "nil",
+  "status": "complete",
+  "graph": {
+    "sources": 3,
+    "evidence": 20,
+    "leads": 3,
+    "assertions": 68,
+    "people": 4,
+    "snapshots": 3,
+    "organizations": 3
+  },
+  "usage": {
+    "total": {
+      "prompt_tokens": 20574,
+      "cached_tokens": 0,
+      "completion_tokens": 42563,
+      "model_calls": 9,
+      "graph_conflicts": 0,
+      "browser_sessions": 4,
+      "browser_seconds": 45.69
+    },
+    "browser": [
+      {
+        "label": "browser_use",
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 4,
+        "browser_seconds": 45.69
+      }
+    ],
+    "by_stage": {
+      "draft": {
+        "prompt_tokens": 3136,
+        "cached_tokens": 0,
+        "completion_tokens": 2965,
+        "model_calls": 1,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "fetch": {
+        "prompt_tokens": 0,
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 3,
+        "browser_seconds": 35.086999999999996
+      },
+      "normalize": {
+        "prompt_tokens": 8277,
+        "cached_tokens": 0,
+        "completion_tokens": 33570,
+        "model_calls": 3,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "plan_search": {
+        "prompt_tokens": 558,
+        "cached_tokens": 0,
+        "completion_tokens": 3380,
+        "model_calls": 1,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "search": {
+        "prompt_tokens": 8603,
+        "cached_tokens": 0,
+        "completion_tokens": 2648,
+        "model_calls": 4,
+        "graph_conflicts": 0,
+        "browser_sessions": 1,
+        "browser_seconds": 10.603
+      }
+    },
+    "models": [
+      {
+        "label": "glm-5.3-flash",
+        "prompt_tokens": 20574,
+        "cached_tokens": 0,
+        "completion_tokens": 42563,
+        "model_calls": 9,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      }
+    ]
+  },
+  "summary": "All three supplied leads are founder/CTO-level decision-makers (role score 1.0 each) at software companies, with strong evidence freshness (~1.0) and moderate semantic similarity to Enma Studios' offer (~0.79-0.80). However, none has an observed contact channel (contact_channels empty, preferred_channel null, email not observed), so per the channel rules no outreach drafts could be produced and channel, subject and body are null for every lead; no contacts were invented. Market fit is the weakest score component for all three (~0.39-0.40), and the verified evidence does not confirm a need to outsource engineering: Ciesielski is described as leading Rewind's technical side, and USAND itself markets done-for-you build services. Semantic similarity indicates relevance only, not factual proof of need. Scores, identities and contact data are treated as immutable; these are unranked drafts of reasoning only - nothing has been sent.",
+  "run_id": "cd3dbd4c-d068-4f1c-860c-d555af0d178c",
+  "leads": [
+    {
+      "reason": "Top-scored lead (fit 0.7898; role 1.0, evidence 1.0, geography 1.0, freshness ~1.0, market 0.3995). Rewind's own team blog (https://rewind.com/blog/meet-the-team-james-ciesielski-co-founder-chief-technology-officer-rewind) verifies James Ciesielski as co-founder and CTO who 'leads the technical side of the business', based in Ottawa. A founder-CTO fits the buyer persona for Enma's build/rebuild/extension offer, but the same source indicates in-house technical leadership, so any engineering-capacity gap is unverified. Semantic similarity 0.799 signals relevance, not proof of need. contact_channels is empty, so no channel or draft.",
+      "title": "Co-founder and Chief Technology Officer of Rewind",
+      "organization": "rewind.com",
+      "fit_score": 0.7898354947382248,
+      "observed_email": null,
+      "person_name": "James Ciesielski",
+      "preferred_channel": null,
+      "outreach": null
+    },
+    {
+      "reason": "Second-ranked lead (fit 0.7882; role 1.0, evidence 1.0, geography 1.0, freshness ~1.0, market 0.3949). universalsearch.io's team page (https://universalsearch.io/meet-the-team) verifies Steve Harnsberger as CEO/Co-Founder of USAND with 25+ years in OTT video metadata, and carries a Revry testimonial that USAND 'solved our search for us with no development lift'. Founder-level authority fits the persona, but that testimonial suggests USAND itself provides build-for-you services, so a need for Enma's engineering capacity is not verified. Semantic similarity 0.790 indicates relevance only. contact_channels is empty, so no channel or draft.",
+      "title": "CEO / Co-Founder",
+      "organization": "universalsearch.io",
+      "fit_score": 0.7881990135235026,
+      "observed_email": null,
+      "person_name": "Steve Harnsberger",
+      "preferred_channel": null,
+      "outreach": null
+    },
+    {
+      "reason": "Lowest-ranked lead (fit 0.7341; role 1.0, market 0.4011, geography 1.0, freshness ~1.0, evidence 0.625 - the weakest evidence component, with name/title/description assertions at reduced authority 0.5). Aurora's blog (https://aurora.dev/blog/meet-the-team-arto-bendiken-aurora-lab-s-co-founder-cto) describes Arto Bendiken as Aurora's co-founder & CTO and a serial entrepreneur in digital currencies. Co-founder/CTO seniority fits the persona, but evidence is thinner and partially lower-authority than the other leads, no location was observed, and no engineering-capacity gap is evidenced. Semantic similarity 0.802 indicates relevance, not proof of need. contact_channels is empty, so no channel or draft.",
+      "title": "Co-Founder & CTO",
+      "organization": "aurora.dev",
+      "fit_score": 0.7341191550182764,
+      "observed_email": null,
+      "person_name": "Arto Bendiken",
+      "preferred_channel": null,
+      "outreach": null
+    }
+  ],
+  "failures": [],
+  "stop_reason": "target_met",
+  "returned_count": 3,
+  "arm": "baseline",
+  "trial": "1",
+  "verbatim": {
+    "checked": 68,
+    "rate": 1.0,
+    "passed": 68,
+    "with_source_edge": 0,
+    "total_assertions": 68
+  },
+  "elapsed_seconds": 235.1,
+  "browser_cost_usd": 0.0328,
+  "browser_sessions_billed": 4,
+  "result_status": "target_met"
+}

@@ -1,0 +1,105 @@
+{
+  "error": "nil",
+  "status": "complete",
+  "graph": {
+    "sources": 1,
+    "leads": 0,
+    "assertions": 21,
+    "people": 0,
+    "snapshots": 1,
+    "organizations": 1,
+    "evidence": 23
+  },
+  "usage": {
+    "total": {
+      "cached_tokens": 0,
+      "completion_tokens": 12768,
+      "prompt_tokens": 20681,
+      "model_calls": 11,
+      "graph_conflicts": 0,
+      "browser_sessions": 6,
+      "browser_seconds": 80.491
+    },
+    "browser": [
+      {
+        "label": "browser_use",
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 6,
+        "browser_seconds": 80.491
+      }
+    ],
+    "by_stage": {
+      "fetch": {
+        "cached_tokens": 0,
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "model_calls": 0,
+        "graph_conflicts": 0,
+        "browser_sessions": 2,
+        "browser_seconds": 38.346
+      },
+      "normalize": {
+        "cached_tokens": 0,
+        "completion_tokens": 5139,
+        "prompt_tokens": 11456,
+        "model_calls": 1,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "plan_search": {
+        "cached_tokens": 0,
+        "completion_tokens": 5643,
+        "prompt_tokens": 1262,
+        "model_calls": 2,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      },
+      "search": {
+        "cached_tokens": 0,
+        "completion_tokens": 1986,
+        "prompt_tokens": 7963,
+        "model_calls": 8,
+        "graph_conflicts": 0,
+        "browser_sessions": 4,
+        "browser_seconds": 42.145
+      }
+    },
+    "models": [
+      {
+        "label": "glm-5.3-flash",
+        "cached_tokens": 0,
+        "completion_tokens": 12768,
+        "prompt_tokens": 20681,
+        "model_calls": 11,
+        "graph_conflicts": 0,
+        "browser_sessions": 0,
+        "browser_seconds": 0.0
+      }
+    ]
+  },
+  "summary": "No companies matched the campaign criteria.",
+  "run_id": "5bae18a5-19fa-4b24-b2e0-b879e8a87a1c",
+  "leads": [],
+  "failures": [],
+  "stop_reason": "budget_exhausted",
+  "returned_count": 0,
+  "arm": "baseline",
+  "trial": "5",
+  "verbatim": {
+    "checked": 21,
+    "rate": 1.0,
+    "passed": 21,
+    "with_source_edge": 0,
+    "total_assertions": 21
+  },
+  "elapsed_seconds": 280.1,
+  "browser_cost_usd": 0.0242,
+  "browser_sessions_billed": 6,
+  "result_status": "no_qualified_leads"
+}
