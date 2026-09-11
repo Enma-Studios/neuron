@@ -1,0 +1,36 @@
+{
+  "query": {
+    "original": "inurl:about \"co-founder\" \"CTO\" SaaS",
+    "more_results_available": true
+  },
+  "web": {
+    "type": "search",
+    "results": [
+      {
+        "title": "About us | Rewind",
+        "url": "https://rewind.com/about/",
+        "description": "Meet the team behind Rewind. James Ciesielski, co-founder and CTO, leads the technical side of the business."
+      },
+      {
+        "title": "Meet the team &mdash; USAND",
+        "url": "https://universalsearch.io/meet-the-team",
+        "description": "Steve Harnsberger, CEO &amp; Co-Founder, has 25+ years in OTT video metadata."
+      },
+      {
+        "title": "Leadership - Resilio",
+        "url": "https://www.resilio.com/about/",
+        "description": "Our leadership team, including Eric Klinker, Co-Founder &amp; CEO."
+      },
+      {
+        "title": "A result with no usable URL",
+        "url": "not-a-url",
+        "description": "Dropped, because a harvested URL has to be a real one."
+      },
+      {
+        "title": "About us | Rewind",
+        "url": "https://rewind.com/about/",
+        "description": "The same page again, returned twice."
+      }
+    ]
+  }
+}

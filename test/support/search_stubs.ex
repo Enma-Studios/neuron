@@ -221,3 +221,52 @@ defmodule Neuron.SearchTest.MixedAgent do
     end
   end
 end
+
+# Selects a URL that is genuinely in the Brave fixture transcript, so the
+# harvest's exact-URL contract is satisfied rather than bypassed.
+defmodule Neuron.SearchTest.BraveHarvestModel do
+  def complete(_messages, _opts) do
+    content =
+      Jason.encode!(%{
+        "results" => [
+          %{
+            "title" => "Leadership - Resilio",
+            "url" => "https://www.resilio.com/about/",
+            "reason" => "company-published leadership page naming a co-founder"
+          }
+        ]
+      })
+
+    {:ok, %{"choices" => [%{"message" => %{"content" => content}}]}}
+  end
+end
+
+# A keyed engine that answers without a browser, so the keyed path can be
+# exercised without a Brave key.
+defmodule Neuron.SearchTest.KeyedEngine do
+  @behaviour Neuron.Search.Engine
+
+  def kind, do: :web
+  def keywords(query), do: query
+  def search_url(keywords), do: "https://api.keyed.example/search?q=#{URI.encode_www_form(keywords)}"
+  def parse(_body), do: []
+  def blocked?(_body), do: false
+  def gated?(_body), do: false
+  def available?, do: true
+
+  def transcript(task, opts) do
+    domain = Keyword.get(opts, :fixture_domain, "acme.example")
+
+    {:ok,
+     %{
+       url: task.url,
+       title: "Keyed results",
+       markdown: "- [Team](https://#{domain}/team)",
+       text: "Team",
+       document: "",
+       links: [%{href: "https://#{domain}/team", label: "Team"}],
+       engine: __MODULE__,
+       query: task.query
+     }}
+  end
+end

@@ -289,3 +289,121 @@ defmodule Neuron.Search.Reddit do
       else: ""
   end
 end
+
+defmodule Neuron.Search.Brave do
+  @moduledoc """
+  Brave Search API: a keyed engine that needs no browser.
+
+  Bot checks from cloud addresses had reduced public discovery to Yandex
+  alone. Google redirects every query to its `/sorry/` interstitial and
+  DuckDuckGo serves its anomaly modal intermittently, both measured, and
+  neither is something to work around. An API answers with a key instead
+  of with a page, so there is no wall to be stopped by and no browser
+  session to bill.
+
+  Enabled only when `BRAVE_SEARCH_API_KEY` is set, or `:neuron, :search,
+  :brave, :api_key` is configured. Without a key the engine is absent from
+  the round rather than failing in it: nobody asked it, so it cannot be
+  evidence that search is unavailable.
+  """
+  @behaviour Neuron.Search.Engine
+
+  @endpoint "https://api.search.brave.com/res/v1/web/search"
+  @count 20
+
+  @impl true
+  def kind, do: :web
+
+  @impl true
+  def keywords(query), do: query
+
+  @impl true
+  def search_url(keywords),
+    do: @endpoint <> "?" <> URI.encode_query(%{"q" => keywords, "count" => @count})
+
+  @impl true
+  def available?, do: is_binary(api_key()) and api_key() != ""
+
+  @doc "The configured key, from application config first and the environment second."
+  def api_key do
+    Application.get_env(:neuron, :search, [])[:brave][:api_key] ||
+      System.get_env("BRAVE_SEARCH_API_KEY")
+  end
+
+  @impl true
+  def transcript(task, opts) do
+    with {:ok, body} <- get(task.url, opts), do: {:ok, build_transcript(task, body)}
+  end
+
+  @doc """
+  Build the transcript a browser page would have produced, from an API
+  response body.
+
+  The same shape `Neuron.Search.Agent` returns, so the wall check, the
+  harvest and its exact-URL contract all work unchanged: every URL the
+  model may select is in `links`, and nothing else is.
+  """
+  def build_transcript(task, body) do
+    results = parse(body)
+
+    %{
+      url: task.url,
+      title: "Brave Search results for #{task.query}",
+      markdown: Enum.map_join(results, "\n", &"- [#{&1.title}](#{&1.url})\n  #{&1.snippet}"),
+      text: Enum.map_join(results, "\n", &"#{&1.title}. #{&1.snippet}"),
+      # A keyed API returns no document, and there is no wall to read out of
+      # one. An empty document is what `wall_reason/1` expects to see here.
+      document: "",
+      links: Enum.map(results, &%{href: &1.url, label: &1.title}),
+      engine: __MODULE__,
+      query: task.query
+    }
+  end
+
+  @impl true
+  def parse(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} -> parse(decoded)
+      {:error, _} -> []
+    end
+  end
+
+  def parse(%{"web" => %{"results" => results}}) when is_list(results) do
+    for result <- results,
+        url = result["url"],
+        is_binary(url) and String.starts_with?(url, ["http://", "https://"]) do
+      %{
+        title: Neuron.Search.Engine.text(result["title"] || ""),
+        url: url,
+        snippet: Neuron.Search.Engine.text(result["description"] || "")
+      }
+    end
+    |> Enum.uniq_by(& &1.url)
+  end
+
+  def parse(_body), do: []
+
+  # A keyed API is not bot-checked and does not gate. A key that is refused
+  # or exhausted comes back as an error from the request, which is an engine
+  # failure with its own reason, not a wall in a page.
+  @impl true
+  def blocked?(_body), do: false
+
+  @impl true
+  def gated?(_body), do: false
+
+  defp get(url, opts) do
+    headers = [{"x-subscription-token", api_key()}, {"accept", "application/json"}]
+
+    case apply(Req, :get, [
+           url,
+           [headers: headers, receive_timeout: Keyword.get(opts, :brave_timeout, 15_000)]
+         ]) do
+      {:ok, %{status: 200, body: body}} -> {:ok, body}
+      {:ok, %{status: 401}} -> {:error, :brave_key_refused}
+      {:ok, %{status: 429}} -> {:error, :brave_rate_limited}
+      {:ok, %{status: status, body: body}} -> {:error, {:brave_http, status, body}}
+      {:error, reason} -> {:error, {:brave_transport, reason}}
+    end
+  end
+end

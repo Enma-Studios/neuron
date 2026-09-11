@@ -200,13 +200,21 @@ defmodule Neuron.SearchTest do
   end
 
   describe "the default engine set" do
-    test "is DuckDuckGo and Yandex, and no engine that needs a login or fails a bot check" do
+    test "is DuckDuckGo and Yandex, plus Brave only when it has a key" do
       # The application default and the compiled fallback must agree, or the
       # engine set depends on whether config was loaded.
       configured = Application.get_env(:neuron, :search, [])[:engines]
 
+      assert configured == [
+               Neuron.Search.DuckDuckGo,
+               Neuron.Search.Yandex,
+               Neuron.Search.Brave
+             ]
+
+      # Brave is listed but unavailable without a key, so what actually runs
+      # is the two browser engines until one is supplied.
+      refute Neuron.Search.Brave.available?()
       assert Neuron.Search.engines() == [Neuron.Search.DuckDuckGo, Neuron.Search.Yandex]
-      assert configured == [Neuron.Search.DuckDuckGo, Neuron.Search.Yandex]
     end
 
     test "never contains a walled or logged-in engine" do
@@ -495,6 +503,42 @@ defmodule Neuron.SearchTest do
       reasons = Map.new(failures, &{&1.engine, &1.reason})
       assert reasons[Neuron.SearchTest.WalledEngine] =~ "bot check"
       assert reasons[Neuron.SearchTest.LoginEngine] =~ "login gate"
+    end
+
+    test "a keyed engine answers without opening a browser" do
+      # No handles and no browser credentials are supplied. If this round
+      # reached the fleet at all it would fail to open one, so a successful
+      # round is the assertion that it never tried.
+      assert {:ok, merged, []} =
+               Neuron.Search.orchestrate(
+                 [%{engine: Neuron.SearchTest.KeyedEngine, query: "acme CTO"}],
+                 engines: [Neuron.SearchTest.KeyedEngine],
+                 model_provider: Neuron.SearchTest.TeamHarvestModel,
+                 fixture_domain: "buyer.example"
+               )
+
+      assert [%{url: "https://buyer.example/team", engines: [Neuron.SearchTest.KeyedEngine]}] =
+               merged
+    end
+
+    test "a keyed engine carries the round when the browser engines are walled" do
+      searches = [
+        %{engine: Neuron.SearchTest.WalledEngine, query: "acme CTO"},
+        %{engine: Neuron.SearchTest.KeyedEngine, query: "acme CTO"}
+      ]
+
+      assert {:ok, merged, failures} =
+               Neuron.Search.orchestrate(searches,
+                 engines: [Neuron.SearchTest.WalledEngine, Neuron.SearchTest.KeyedEngine],
+                 handles: [%{provider: :fake, session: nil}],
+                 pages_per_session: 2,
+                 page_adapter: Neuron.SearchTest.MixedAgent,
+                 model_provider: Neuron.SearchTest.TeamHarvestModel,
+                 fixture_domain: "buyer.example"
+               )
+
+      assert [%{url: "https://buyer.example/team"}] = merged
+      assert [%{engine: Neuron.SearchTest.WalledEngine, kind: :bot_check}] = failures
     end
 
     test "errors only when every engine failed, and names each one" do
