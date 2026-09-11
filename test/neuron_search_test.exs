@@ -152,6 +152,53 @@ defmodule Neuron.SearchTest do
     end
   end
 
+  describe "balance/2" do
+    test "gives every enabled engine a query without growing the round" do
+      planned = [
+        %{engine: Neuron.SearchTest.WebEngine, query: "one"},
+        %{engine: Neuron.SearchTest.WebEngine, query: "two"},
+        %{engine: Neuron.SearchTest.WebEngine, query: "three"}
+      ]
+
+      balanced =
+        Neuron.Search.balance(planned, [
+          Neuron.SearchTest.WebEngine,
+          Neuron.SearchTest.SocialEngine
+        ])
+
+      assert length(balanced) == length(planned)
+      assert Enum.map(balanced, & &1.query) == ["one", "two", "three"]
+
+      assert Enum.frequencies_by(balanced, & &1.engine) == %{
+               Neuron.SearchTest.WebEngine => 2,
+               Neuron.SearchTest.SocialEngine => 1
+             }
+    end
+
+    test "leaves a round that already covers every engine alone" do
+      planned = [
+        %{engine: Neuron.SearchTest.WebEngine, query: "one"},
+        %{engine: Neuron.SearchTest.SocialEngine, query: "two"}
+      ]
+
+      assert Neuron.Search.balance(planned, [
+               Neuron.SearchTest.WebEngine,
+               Neuron.SearchTest.SocialEngine
+             ]) == planned
+    end
+
+    test "never strips an engine bare to cover another" do
+      # One query, two engines: covering the second would uncover the first,
+      # so the round stays as planned rather than trading one gap for another.
+      planned = [%{engine: Neuron.SearchTest.WebEngine, query: "one"}]
+
+      assert Neuron.Search.balance(planned, [
+               Neuron.SearchTest.WebEngine,
+               Neuron.SearchTest.SocialEngine
+             ]) == planned
+    end
+  end
+
   describe "the default engine set" do
     test "is DuckDuckGo and Yandex, and no engine that needs a login or fails a bot check" do
       # The application default and the compiled fallback must agree, or the
@@ -346,6 +393,46 @@ defmodule Neuron.SearchTest do
                failures
 
       assert reason =~ "login gate"
+    end
+
+    test "two engines, one bot-checked, and the round succeeds on the other" do
+      # The shape that failed four of ten live runs: the planner put every
+      # query of the round on one engine and that engine was walled.
+      planned = [
+        %{engine: Neuron.SearchTest.WalledEngine, query: "acme CTO"},
+        %{engine: Neuron.SearchTest.WalledEngine, query: "acme founder email"}
+      ]
+
+      enabled = [Neuron.SearchTest.WalledEngine, Neuron.SearchTest.SocialEngine]
+
+      assert {:ok, merged, failures} =
+               Neuron.Search.orchestrate(Neuron.Search.balance(planned, enabled),
+                 engines: enabled,
+                 handles: [%{provider: :fake, session: nil}],
+                 pages_per_session: 2,
+                 page_adapter: Neuron.SearchTest.MixedAgent,
+                 model_provider: Neuron.SearchTest.TeamHarvestModel,
+                 fixture_domain: "buyer.example"
+               )
+
+      assert [%{url: "https://buyer.example/team"}] = merged
+      assert [%{engine: Neuron.SearchTest.WalledEngine, kind: :bot_check}] = failures
+    end
+
+    test "an enabled engine nobody asked is not evidence that search is unavailable" do
+      # Every attempted engine failed, but Yandex's stand-in was never tried,
+      # so the round is degraded rather than unavailable.
+      assert {:ok, [], failures} =
+               Neuron.Search.orchestrate(
+                 [%{engine: Neuron.SearchTest.WalledEngine, query: "acme CTO"}],
+                 engines: [Neuron.SearchTest.WalledEngine, Neuron.SearchTest.SocialEngine],
+                 handles: [%{provider: :fake, session: nil}],
+                 pages_per_session: 2,
+                 page_adapter: Neuron.SearchTest.MixedAgent,
+                 model_provider: Neuron.SearchTest.TeamHarvestModel
+               )
+
+      assert [%{engine: Neuron.SearchTest.WalledEngine, kind: :bot_check}] = failures
     end
 
     test "a login gate on one engine leaves the other two to carry the round" do
