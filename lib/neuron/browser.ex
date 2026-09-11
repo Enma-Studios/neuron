@@ -44,30 +44,63 @@ end
 defmodule Neuron.Browser.BrowserUse do
   @behaviour Neuron.Browser
 
+  @defaults [session_ttl_seconds: 3600]
+
+  @doc """
+  Browser Use settings, merged over Neuron's own defaults.
+
+  Elixir configuration replaces a keyword rather than merging into it, so a
+  host that writes `config :neuron, browser: [fleet: [...]]` silently wipes
+  the `browser_use` block underneath it. A dependency's own config is never
+  loaded either, so a host must declare every value it wants and is one
+  partial block away from an application that browses in the parent and
+  reports `:browser_use_not_configured` everywhere else. Reading through
+  here rather than indexing the raw keyword means a missing block costs a
+  default, not the whole configuration.
+  """
+  def config do
+    Keyword.merge(@defaults, Application.get_env(:neuron, :browser, [])[:browser_use] || [])
+  end
+
+  @doc "The API key, from configuration first and the environment second."
+  def api_key do
+    present(config()[:api_key]) || present(System.get_env("BROWSER_USE_API_KEY"))
+  end
+
+  @doc "Whether a browser session can be opened at all."
+  def configured?, do: not is_nil(api_key())
+
   @doc "Returns the configured Browser Use profile ID sent to every new cloud session."
   def profile_id(opts \\ []) do
-    config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
+    Keyword.get(
+      opts,
+      :browser_use_profile_id,
+      present(config()[:profile_id]) || present(System.get_env("BROWSER_USE_PROFILE_ID"))
+    )
+  end
 
-    id =
-      Keyword.get(
-        opts,
-        :browser_use_profile_id,
-        config[:profile_id] || System.get_env("BROWSER_USE_PROFILE_ID")
-      )
+  defp present(value) when is_binary(value) and value != "", do: value
+  defp present(_value), do: nil
 
-    id
+  # One place that reports it, naming both places it looked, because a run
+  # that cannot browse is otherwise indistinguishable from one that found
+  # nothing.
+  defp not_configured(opts) do
+    Neuron.Telemetry.emit(
+      [:browser, :not_configured],
+      Neuron.Telemetry.trace_metadata(opts)
+      |> Map.merge(%{
+        checked: ":neuron, :browser, :browser_use, :api_key and BROWSER_USE_API_KEY",
+        browser_config_keys: Keyword.keys(Application.get_env(:neuron, :browser, []))
+      })
+    )
+
+    {:error, :browser_use_not_configured}
   end
 
   @impl true
   def fetch(url, opts) do
-    config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
-    key = config[:api_key] || System.get_env("BROWSER_USE_API_KEY")
-
-    if is_nil(key) or key == "" do
-      {:error, :browser_use_not_configured}
-    else
-      fetch_with_open_session(url, opts)
-    end
+    if configured?(), do: fetch_with_open_session(url, opts), else: not_configured(opts)
   end
 
   @doc """
@@ -75,13 +108,9 @@ defmodule Neuron.Browser.BrowserUse do
   the returned handle and must release it with `close_session/1`.
   """
   def open_session(opts \\ []) do
-    config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
-    key = config[:api_key] || System.get_env("BROWSER_USE_API_KEY")
-
-    if is_nil(key) or key == "" do
-      {:error, :browser_use_not_configured}
-    else
-      open_pinocchio_session(config, key, opts)
+    case api_key() do
+      nil -> not_configured(opts)
+      key -> open_pinocchio_session(config(), key, opts)
     end
   end
 
@@ -123,14 +152,9 @@ defmodule Neuron.Browser.BrowserUse do
   advertises is ignored and silently returns ten rows.
   """
   def list_sessions(opts \\ []) do
-    config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
-    key = opts[:api_key] || config[:api_key] || System.get_env("BROWSER_USE_API_KEY")
-    endpoint = opts[:api_endpoint] || config[:api_endpoint] || config[:endpoint] || @endpoint
-
-    if is_nil(key) or key == "" do
-      {:error, :browser_use_not_configured}
-    else
-      list_pages(endpoint, key, 1, [])
+    case opts[:api_key] || api_key() do
+      nil -> not_configured(opts)
+      key -> list_pages(endpoint(opts), key, 1, [])
     end
   end
 
@@ -146,9 +170,8 @@ defmodule Neuron.Browser.BrowserUse do
     now = opts[:now] || DateTime.utc_now()
 
     with {:ok, sessions} <- list_sessions(opts) do
-      config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
-      key = opts[:api_key] || config[:api_key] || System.get_env("BROWSER_USE_API_KEY")
-      endpoint = opts[:api_endpoint] || config[:api_endpoint] || config[:endpoint] || @endpoint
+      key = opts[:api_key] || api_key()
+      endpoint = endpoint(opts)
 
       stopped =
         for id <- stale_sessions(sessions, now, ttl) do
@@ -174,9 +197,10 @@ defmodule Neuron.Browser.BrowserUse do
   end
 
   @doc "Seconds a provisioned browser may run before `sweep/1` stops it."
-  def session_ttl_seconds do
-    config = Application.get_env(:neuron, :browser, [])[:browser_use] || []
-    config[:session_ttl_seconds] || 3600
+  def session_ttl_seconds, do: config()[:session_ttl_seconds]
+
+  defp endpoint(opts) do
+    opts[:api_endpoint] || config()[:api_endpoint] || config()[:endpoint] || @endpoint
   end
 
   defp stale?(session, now, ttl) do
