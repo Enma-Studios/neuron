@@ -7,3 +7,6 @@ mise.local.toml
 /*.db
 /*.db-*
 .zcode/
+
+.env
+.env.*
