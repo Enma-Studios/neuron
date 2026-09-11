@@ -159,9 +159,23 @@ defmodule Neuron.CampaignPipeline do
       failures =
         for child <- children,
             child.status != :complete,
-            do: %{run_id: child.id, reason: inspect(child.error)}
+            do: %{
+              run_id: child.id,
+              reason: inspect(child.error),
+              kind: Neuron.Usage.error_class(child.error) || :child_failed
+            }
 
-      {:ok, %{data | failures: data.failures ++ failures}}
+      # A child that could not browse is a configuration fault, not a source
+      # that happened not to work. Every child in a batch failing that way
+      # means the run cannot discover anything, and a run that says it found
+      # nothing is a worse answer than one that says it was never able to
+      # look.
+      if children != [] and length(failures) == length(children) and
+           Enum.all?(failures, &(&1.reason =~ "browser_use_not_configured")) do
+        {:error, :browser_use_not_configured}
+      else
+        {:ok, %{data | failures: data.failures ++ failures}}
+      end
     end
   end
 
