@@ -26,8 +26,28 @@ defmodule Neuron do
          do: await_run(id, Keyword.get(opts, :timeout, 120_000))
   end
 
-  def get_run(id) do
-    machine = reconcile_run(id)
+  @doc """
+  Read a run. **Never writes.**
+
+  A host polls this, and a poll that mutates the thing it is watching is not
+  a read. Reconciling a discarded worker job into a failed run is a write,
+  so it lives in `reconcile_run/1` and a caller asks for it deliberately.
+  This used to do it as a side effect, which meant every dashboard refresh
+  could fail a live run.
+  """
+  def get_run(id), do: id |> FSM.get() |> snapshot(id)
+
+  @doc """
+  Reconcile the run, then read it.
+
+  An Oban job can be discarded or cancelled out from under a machine, which
+  leaves it executing forever with nobody working on it. This notices that
+  and fails the run. It is the same snapshot `get_run/1` returns, so a
+  caller that wants the old behaviour calls this instead.
+  """
+  def reconcile_run(id), do: id |> reconcile() |> snapshot(id)
+
+  defp snapshot(machine, id) do
     data = FSM.data(machine)
     FSM.definition(machine)
 
@@ -63,8 +83,9 @@ defmodule Neuron do
     end
   end
 
-  @doc "Reconcile a discarded or externally cancelled current Oban job with its run."
-  def reconcile_run(id) do
+  # Reconciliation itself, returning the machine, for the callers that need
+  # one rather than a snapshot.
+  defp reconcile(id) do
     import Ecto.Query
     machine = FSM.get(id)
 
@@ -122,7 +143,7 @@ defmodule Neuron do
   end
 
   def resume_run(id) do
-    data = id |> reconcile_run() |> FSM.data()
+    data = id |> reconcile() |> FSM.data()
     event = if Map.has_key?(data, :stage_index), do: :retry_pipeline, else: :retry
     FSM.send(id, event, %{error: nil})
   end
@@ -138,7 +159,9 @@ defmodule Neuron do
     do: await(id, System.monotonic_time(:millisecond) + timeout)
 
   defp await(id, deadline) do
-    result = get_run(id)
+    # Waiting is not reading: a run whose worker was discarded has to be
+    # noticed here, or `await_run/2` would spin until its timeout.
+    result = reconcile_run(id)
 
     cond do
       result.status == :complete ->

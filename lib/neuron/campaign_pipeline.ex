@@ -151,7 +151,10 @@ defmodule Neuron.CampaignPipeline do
   end
 
   def stage(:collect, data, _opts) do
-    children = Enum.map(data.pending_children, &Neuron.get_run(&1.id))
+    # Reconciled rather than read: a child whose worker was discarded would
+    # otherwise sit in `processing` forever and this stage would snooze
+    # against it until the run's budget ran out.
+    children = Enum.map(data.pending_children, &Neuron.reconcile_run(&1.id))
 
     if Enum.any?(children, &(&1.status not in [:complete, :failed, :cancelled])) do
       {:wait, 2}
