@@ -35,12 +35,12 @@ defmodule Neuron.MixProject do
       {:owl, "~> 0.13"},
       {:telemetry, "~> 1.3"},
       {:req, "~> 0.5"},
-      {:dlex, github: "Enma-Studios/dlex", branch: "master", optional: false},
+      {:dlex, github: "Enma-Studios/dlex", tag: "v0.1.0", optional: false},
       {:htmd, "~> 0.2", optional: false}
     ]
 
     pinocchio =
-      {:pinocchio, git: "git@github.com:Enma-Studios/pinocchio.git", branch: "main"}
+      {:pinocchio, git: "git@github.com:Enma-Studios/pinocchio.git", tag: "v0.1.0"}
 
     base_deps ++ [pinocchio]
   end
