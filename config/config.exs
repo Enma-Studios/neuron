@@ -32,10 +32,14 @@ config :neuron,
     ]
   ],
   search: [
+    # Brave is listed but runs only when BRAVE_SEARCH_API_KEY is set; without
+    # a key it is absent from the round rather than failing in it.
     engines: [
       Neuron.Search.DuckDuckGo,
-      Neuron.Search.Yandex
-    ]
+      Neuron.Search.Yandex,
+      Neuron.Search.Brave
+    ],
+    brave: [api_key: System.get_env("BRAVE_SEARCH_API_KEY")]
   ],
   limits: [max_runs: 32],
   prompts: []

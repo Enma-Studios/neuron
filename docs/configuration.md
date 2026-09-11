@@ -54,6 +54,7 @@ Alternatively, set `start_repo: true` and `start_oban: true` and put the Postgre
 | `ZAI_BASE_URL` | Production override for `https://api.z.ai/api/paas/v4` |
 | `BROWSER_USE_API_KEY` | Required for all browsing; Browser Use is the only browser provider |
 | `BROWSER_USE_PROFILE_ID` | Optional, default unset; see the warning below before setting it |
+| `BRAVE_SEARCH_API_KEY` | Optional; enables the Brave Search engine, which is absent without it |
 | `NEURON_FLEET_SESSIONS` | `1` in production; browser sessions opened per search fleet |
 | `NEURON_FLEET_PAGES` | `4` in production; concurrent pages multiplexed per fleet session |
 | `NEURON_CAPTURE_PAYLOADS` | `false`; production telemetry payload setting |
@@ -64,9 +65,15 @@ All browsing runs on Browser Use cloud browsers; there is no local browser provi
 
 ## Search engines and the browser fleet
 
-Searches run on every enabled engine through `:neuron, :search, :engines`. **The default is DuckDuckGo and Yandex**, the two that return public results to a signed-out cloud browser. The model tailors each query to its platform before anything runs: LinkedIn, X, and Reddit get native, operator-free queries, while the keyword engines keep operators such as `site:` and quoted phrases, aimed at pages a prospective buyer publishes itself.
+Searches run on every enabled engine through `:neuron, :search, :engines`. **The default is DuckDuckGo, Yandex and Brave**: the two that return public results to a signed-out cloud browser, plus a keyed API that runs only when it has a key. The model tailors each query to its platform before anything runs: LinkedIn, X, and Reddit get native, operator-free queries, while the keyword engines keep operators such as `site:` and quoted phrases, aimed at pages a prospective buyer publishes itself.
 
 `Neuron.Search.Google`, `Neuron.Search.LinkedIn`, `Neuron.Search.X` and `Neuron.Search.Reddit` ship switched off. They remain supported and can be added back to the list, but each needs something the default configuration does not have. Google redirects every query from Browser Use cloud addresses to its `/sorry/` bot check, measured seven times out of seven in one run and four out of four in another, so it contributes nothing and is reported as a skipped engine on every query; it may work from an address it serves results to, which a local browser provider may be (`neuron-02`). Reddit redirects cloud datacenter addresses to a login wall and wants residential proxies. LinkedIn and X need a logged-in `BROWSER_USE_PROFILE_ID`, with the risk described below.
+
+`Neuron.Search.Brave` is a **keyed engine**. It answers over HTTP with `BRAVE_SEARCH_API_KEY`, or `:neuron, :search, :brave, :api_key`, and needs no browser: no page to be bot-checked, no cloud session to bill. It exists because bot checks from cloud addresses had reduced public discovery to Yandex alone, and because the answer to a bot check is a route that does not need one rather than a way around it.
+
+Without a key Brave is **absent** from the round rather than failing in it. An engine nobody asked cannot be evidence that search is unavailable, which is the same rule a round already applies to an engine it never reached. That is why it can sit in the default list unconditionally.
+
+An engine may declare `available?/0` to say it cannot run here, and `transcript/2` to fetch its own results instead of being driven through the browser fleet. Both are optional: an engine that declares neither is assumed available and is driven through the fleet, which is what every browser engine does.
 
 Engines are module names, not atoms: `Neuron.Search.DuckDuckGo`, never `:duckduckgo`. An unrecognised entry is not an engine and is silently absent from every round.
 

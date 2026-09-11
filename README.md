@@ -31,7 +31,7 @@ mix neuron.models.fetch
 
 ```
 
-Embeddings run locally inside the BEAM using Bumblebee, Nx.Serving and EXLA. Install a C++ compiler (Debian/Ubuntu: `sudo apt-get install g++`) before compiling dependencies. Model files stay under ignored `priv/models` and must be downloaded before startup or release packaging. Runtime never calls an embedding endpoint. ZAI generation always uses `glm-5.3-flash`. Search runs platform-tailored queries as concurrent Browser Use cloud pages; all browsing runs on Browser Use. DuckDuckGo and Yandex are enabled by default, the two that return public results to a signed-out browser. Google, LinkedIn, X, and Reddit are supported and switched off, each for a reason [configuration](docs/configuration.md) records.
+Embeddings run locally inside the BEAM using Bumblebee, Nx.Serving and EXLA. Install a C++ compiler (Debian/Ubuntu: `sudo apt-get install g++`) before compiling dependencies. Model files stay under ignored `priv/models` and must be downloaded before startup or release packaging. Runtime never calls an embedding endpoint. ZAI generation always uses `glm-5.3-flash`. Search runs platform-tailored queries as concurrent Browser Use cloud pages; all browsing runs on Browser Use. DuckDuckGo and Yandex are enabled by default, the two that return public results to a signed-out browser, alongside Brave Search, a keyed API that runs only when `BRAVE_SEARCH_API_KEY` is set and needs no browser at all. Google, LinkedIn, X, and Reddit are supported and switched off, each for a reason [configuration](docs/configuration.md) records.
 
 ## Interactive use
 

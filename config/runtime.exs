@@ -13,6 +13,10 @@ if config_env() == :prod do
       model: "glm-5.3-flash"
     ],
     telemetry: [capture_payloads: System.get_env("NEURON_CAPTURE_PAYLOADS", "false") == "true"],
+    search: [
+      engines: [Neuron.Search.DuckDuckGo, Neuron.Search.Yandex, Neuron.Search.Brave],
+      brave: [api_key: System.get_env("BRAVE_SEARCH_API_KEY")]
+    ],
     browser: [
       fleet: [
         sessions: String.to_integer(System.get_env("NEURON_FLEET_SESSIONS", "1")),

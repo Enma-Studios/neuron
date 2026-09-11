@@ -6,7 +6,8 @@ defmodule Neuron.Search do
   # off; see `docs/configuration.md`.
   @default_engines [
     Neuron.Search.DuckDuckGo,
-    Neuron.Search.Yandex
+    Neuron.Search.Yandex,
+    Neuron.Search.Brave
   ]
 
   @doc """
@@ -39,69 +40,98 @@ defmodule Neuron.Search do
   """
   def orchestrate(searches, opts \\ []) do
     tasks = search_tasks(searches, opts)
+    {keyed, browsed} = Enum.split_with(tasks, &Neuron.Search.Engine.keyed?(&1.engine))
+
+    pages = keyed_pages(keyed, opts) ++ browser_pages(browsed, opts)
+    collect(tasks, pages, opts)
+  end
+
+  # A keyed engine answers over HTTP, so a round made only of keyed engines
+  # never opens a browser and is never billed for one.
+  defp keyed_pages([], _opts), do: []
+
+  defp keyed_pages(tasks, opts) do
+    Neuron.Pipeline.map(
+      tasks,
+      fn task -> {task.id, task.engine.transcript(task, opts)} end,
+      max_concurrency: Keyword.get(opts, :keyed_concurrency, 4)
+    )
+  end
+
+  defp browser_pages([], _opts), do: []
+
+  defp browser_pages(tasks, opts) do
     adapter = Keyword.get(opts, :page_adapter, Neuron.Search.Agent)
 
     case Neuron.Browser.Fleet.with_fleet(Keyword.put(opts, :page_adapter, adapter), fn fleet ->
            Neuron.Browser.Fleet.fetch_pages(fleet, tasks)
          end) do
-      {:error, reason} ->
-        {:error, {:search_unavailable, reason: {:fleet_unavailable, reason}}}
-
       pages when is_list(pages) ->
-        task_by_id = Map.new(tasks, &{&1.id, &1})
+        pages
 
-        transcripts =
-          for {_id, {:ok, transcript}} <- pages, is_map(transcript), do: transcript
+      {:error, reason} ->
+        # A fleet that will not open is every browser task failing, not the
+        # round failing. A keyed engine needs no browser and can still
+        # answer; whether that leaves the round unavailable is decided once,
+        # below, by the same rule as any other failure.
+        for task <- tasks, do: {task.id, {:error, {:fleet_unavailable, reason}}}
+    end
+  end
 
-        {open_transcripts, walled} =
-          Enum.split_with(transcripts, fn transcript -> is_nil(wall_reason(transcript)) end)
+  defp collect(tasks, pages, opts) do
+    task_by_id = Map.new(tasks, &{&1.id, &1})
 
-        page_failures =
-          for {id, {:error, reason}} <- pages, task = task_by_id[id] do
-            %{
-              engine: task.engine,
-              query: task.query,
-              kind: :page_failed,
-              reason: inspect(reason)
-            }
-          end ++
-            Enum.map(walled, fn transcript ->
-              {kind, reason} = wall_reason(transcript)
+    transcripts =
+      for {_id, {:ok, transcript}} <- pages, is_map(transcript), do: transcript
 
-              %{
-                engine: transcript.engine,
-                query: transcript.query,
-                kind: kind,
-                reason: reason
-              }
-            end)
+    {open_transcripts, walled} =
+      Enum.split_with(transcripts, fn transcript -> is_nil(wall_reason(transcript)) end)
 
-        for failure <- page_failures do
-          Neuron.Telemetry.emit(
-            [:search, :engine_failed],
-            Neuron.Telemetry.trace_metadata(opts)
-            |> Map.merge(%{engine: inspect(failure.engine), reason: failure.reason})
-          )
-        end
+    page_failures =
+      for {id, {:error, reason}} <- pages, task = task_by_id[id] do
+        %{
+          engine: task.engine,
+          query: task.query,
+          kind: :page_failed,
+          reason: inspect(reason)
+        }
+      end ++
+        Enum.map(walled, fn transcript ->
+          {kind, reason} = wall_reason(transcript)
 
-        {found, harvest_failures} = Neuron.Search.Harvest.from_transcripts(open_transcripts, opts)
-        merged = merge_results(found)
-        failures = page_failures ++ harvest_failures
+          %{
+            engine: transcript.engine,
+            query: transcript.query,
+            kind: kind,
+            reason: reason
+          }
+        end)
 
-        # A round is unavailable only when every enabled engine was actually
-        # attempted and failed. An engine that answered with nothing still
-        # carried the round; a walled or gated engine is a skipped engine;
-        # and an enabled engine nobody asked cannot be evidence that search
-        # is unavailable.
-        answered = MapSet.new(found, fn {engine, _results} -> engine end)
-        attempted = MapSet.new(tasks, & &1.engine)
-        unattempted = Enum.reject(engines(opts), &MapSet.member?(attempted, &1))
+    for failure <- page_failures do
+      Neuron.Telemetry.emit(
+        [:search, :engine_failed],
+        Neuron.Telemetry.trace_metadata(opts)
+        |> Map.merge(%{engine: inspect(failure.engine), reason: failure.reason})
+      )
+    end
 
-        if MapSet.size(answered) == 0 and failures != [] and unattempted == [] do
-          {:error, {:search_unavailable, reason: {:all_searches_failed, failures}}}
-        else
-          {:ok, merged, failures}
-        end
+    {found, harvest_failures} = Neuron.Search.Harvest.from_transcripts(open_transcripts, opts)
+    merged = merge_results(found)
+    failures = page_failures ++ harvest_failures
+
+    # A round is unavailable only when every enabled engine was actually
+    # attempted and failed. An engine that answered with nothing still
+    # carried the round; a walled or gated engine is a skipped engine;
+    # and an enabled engine nobody asked cannot be evidence that search
+    # is unavailable.
+    answered = MapSet.new(found, fn {engine, _results} -> engine end)
+    attempted = MapSet.new(tasks, & &1.engine)
+    unattempted = Enum.reject(engines(opts), &MapSet.member?(attempted, &1))
+
+    if MapSet.size(answered) == 0 and failures != [] and unattempted == [] do
+      {:error, {:search_unavailable, reason: {:all_searches_failed, failures}}}
+    else
+      {:ok, merged, failures}
     end
   end
 
@@ -143,9 +173,10 @@ defmodule Neuron.Search do
 
   @doc "Resolve the engine set: call opts override application config overrides defaults."
   def engines(opts \\ []) do
-    Keyword.get(opts, :engines) ||
-      Application.get_env(:neuron, :search, [])[:engines] ||
-      @default_engines
+    (Keyword.get(opts, :engines) ||
+       Application.get_env(:neuron, :search, [])[:engines] ||
+       @default_engines)
+    |> Enum.filter(&Neuron.Search.Engine.available?/1)
   end
 
   @doc "Expand one research goal into platform-tailored searches through the model."
@@ -363,6 +394,33 @@ defmodule Neuron.Search.Engine do
   @callback parse(html :: String.t()) :: [result()]
   @callback blocked?(html :: String.t()) :: boolean()
   @callback gated?(html :: String.t()) :: boolean()
+
+  @doc """
+  Whether this engine can run at all in the current environment. A keyed
+  engine without its key is absent from the round rather than a failure in
+  it: nobody asked it, so it cannot be evidence that search is unavailable.
+  """
+  @callback available?() :: boolean()
+
+  @doc """
+  Return a transcript without a browser. A keyed API engine implements
+  this; a browser-rendered engine does not and is driven through the
+  fleet instead. The transcript shape is the one `Neuron.Search.Agent`
+  produces, so everything downstream is identical.
+  """
+  @callback transcript(task :: map(), opts :: keyword()) :: {:ok, map()} | {:error, term()}
+
+  @optional_callbacks available?: 0, transcript: 2
+
+  @doc "Whether `engine` can run here. An engine that does not say is assumed to."
+  def available?(engine) do
+    not (Code.ensure_loaded?(engine) and function_exported?(engine, :available?, 0)) or
+      engine.available?()
+  end
+
+  @doc "Whether `engine` fetches its own results instead of being driven through a browser."
+  def keyed?(engine),
+    do: Code.ensure_loaded?(engine) and function_exported?(engine, :transcript, 2)
 
   @doc "Collapse tags, entities, and whitespace in scraped anchor text."
   def text(value) do
