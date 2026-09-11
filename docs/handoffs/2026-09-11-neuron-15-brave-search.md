@@ -60,28 +60,53 @@ it never wanted. `Neuron.CampaignPipeline` already handled both error shapes.
 
 Full suite 128 passed, 4 excluded. `mix format --check-formatted` clean.
 
-## The fixture is constructed, not captured
+## The fixture is a real capture
 
-**No Brave key was available when this was written.** `test/support/fixtures/brave_web_search.json`
-is built from the response shape Brave's Web Search API documents: a `web.results` array whose
-entries carry `title`, `url` and `description`. The endpoint, the `X-Subscription-Token`
-header and that shape were read from Brave's documentation on 2026-09-11.
+Captured from the live API on 2026-09-11 with a real key, for the query
+`"meet the team" "co-founder" CTO SaaS company`, and saved verbatim: every field the API sent
+is in `test/support/fixtures/brave_web_search.json`, including the ones Neuron ignores. The
+two edge cases a real response did not happen to contain, a result whose URL is not one and a
+duplicate, are inline in the test as synthetic maps labelled as such, rather than smuggled
+into the capture.
 
-That means the fixture proves the parser handles the documented shape. It does not prove the
-documented shape is what the API actually sends. **Replace it with a captured response the
-first time the live test runs with a real key**, and treat any difference as the fixture being
-wrong rather than the API.
-
-The live test is tagged `:integration` and fails loudly rather than skipping quietly when
-`BRAVE_SEARCH_API_KEY` is unset, so it cannot pass by not running:
+The live test is tagged `:integration` and **fails loudly rather than skipping quietly** when
+`BRAVE_SEARCH_API_KEY` is unset, so it cannot pass by not running. Both paths were checked:
 
 ```sh
 BRAVE_SEARCH_API_KEY=... mix test --include integration test/neuron_search_brave_test.exs
+# 11 passed
+
+mix test --include integration test/neuron_search_brave_test.exs
+# fails: BRAVE_SEARCH_API_KEY must be set to run the live Brave test
 ```
 
-## Noticed, not fixed
+## What the live API does that the documentation did not say
 
-`Neuron.Search.Engine.html_entities/1` decodes six entities and `&mdash;` is not among them,
-so a title carrying one reaches a lead with the markup intact. The fixture keeps a real
-`&mdash;` and the test asserts the behaviour that exists rather than the one that might be
-assumed. Widening that helper is worth doing and is not part of adding an engine.
+- **Descriptions carry markup.** Matched terms come back wrapped in `<strong>`. The shared
+  `text/1` helper strips tags, so this was already handled, and the test now asserts it rather
+  than assuming it.
+- **Result objects carry far more than three fields**: `age`, `profile`, `meta_url`,
+  `thumbnail`, `extra_snippets`, `language` and a dozen others. Only `title`, `url` and
+  `description` are read, and the capture keeps the rest so a future reader can see what was
+  on offer.
+- **Brave rewrites the query.** The response carries
+  `query.search_operators: %{applied: true, cleaned_query: ...}`, and the cleaned form has the
+  quotes and `inurl:` stripped. An operator-heavy planner query returned one result where a
+  plainer phrasing returned more. `keywords/1` is left as the identity, because the response
+  says the operators were applied and guessing otherwise would be worse than reporting it, but
+  **this is worth measuring before Brave is relied on for volume.**
+
+## html_entities/1, widened
+
+`Neuron.Search.Engine.html_entities/1` decoded six entities, so a title carrying anything else
+reached a lead as markup. It now decodes a table of the named entities that actually turn up
+in titles and snippets, including the Latin-1 letters that appear in European company and
+person names, plus **every numeric entity**, which is where the long tail lives.
+
+Two things it deliberately does not do. An entity with no decoding is left exactly as written,
+because mangling it into something that looks decoded means nobody can tell afterwards. And a
+codepoint outside Unicode, or inside the surrogate block, is not decoded at all.
+
+It now decodes in **one pass**. The old version replaced `&amp;` first, which decoded
+`&amp;lt;script&amp;gt;` twice and turned an escaped entity into a real tag delimiter. There
+is a test for that specific string.

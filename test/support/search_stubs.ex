@@ -230,9 +230,9 @@ defmodule Neuron.SearchTest.BraveHarvestModel do
       Jason.encode!(%{
         "results" => [
           %{
-            "title" => "Leadership - Resilio",
-            "url" => "https://www.resilio.com/about/",
-            "reason" => "company-published leadership page naming a co-founder"
+            "title" => "Team | Companyon",
+            "url" => "https://companyon.vc/team/",
+            "reason" => "company-published team page naming decision makers"
           }
         ]
       })

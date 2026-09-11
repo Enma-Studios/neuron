@@ -432,16 +432,107 @@ defmodule Neuron.Search.Engine do
     |> String.trim()
   end
 
-  @doc "Decode the HTML entities emitted by engine result pages."
-  def html_entities(value) do
-    value
-    |> String.replace("&amp;", "&")
-    |> String.replace("&quot;", "\"")
-    |> String.replace("&#39;", "'")
-    |> String.replace("&#x27;", "'")
-    |> String.replace("&lt;", "<")
-    |> String.replace("&gt;", ">")
+  @named_entities %{
+    "amp" => "&",
+    "quot" => "\"",
+    "apos" => "'",
+    "lt" => "<",
+    "gt" => ">",
+    "nbsp" => " ",
+    "ndash" => "\u2013",
+    "mdash" => "\u2014",
+    "hellip" => "...",
+    "lsquo" => "\u2018",
+    "rsquo" => "\u2019",
+    "sbquo" => "\u201A",
+    "ldquo" => "\u201C",
+    "rdquo" => "\u201D",
+    "bdquo" => "\u201E",
+    "laquo" => "\u00AB",
+    "raquo" => "\u00BB",
+    "bull" => "\u2022",
+    "middot" => "\u00B7",
+    "dagger" => "\u2020",
+    "prime" => "\u2032",
+    "trade" => "\u2122",
+    "reg" => "\u00AE",
+    "copy" => "\u00A9",
+    "deg" => "\u00B0",
+    "sect" => "\u00A7",
+    "para" => "\u00B6",
+    "euro" => "\u20AC",
+    "pound" => "\u00A3",
+    "yen" => "\u00A5",
+    "cent" => "\u00A2",
+    "times" => "\u00D7",
+    "divide" => "\u00F7",
+    "shy" => "",
+    "zwj" => "",
+    "zwnj" => "",
+    # A person's or company's name is the thing most likely to reach a lead
+    # with an entity still in it.
+    "aacute" => "\u00E1",
+    "agrave" => "\u00E0",
+    "acirc" => "\u00E2",
+    "aring" => "\u00E5",
+    "auml" => "\u00E4",
+    "aelig" => "\u00E6",
+    "ccedil" => "\u00E7",
+    "eacute" => "\u00E9",
+    "egrave" => "\u00E8",
+    "ecirc" => "\u00EA",
+    "euml" => "\u00EB",
+    "iacute" => "\u00ED",
+    "iuml" => "\u00EF",
+    "ntilde" => "\u00F1",
+    "oacute" => "\u00F3",
+    "ocirc" => "\u00F4",
+    "ouml" => "\u00F6",
+    "oslash" => "\u00F8",
+    "uacute" => "\u00FA",
+    "ucirc" => "\u00FB",
+    "uuml" => "\u00FC",
+    "szlig" => "\u00DF"
+  }
+
+  @doc """
+  Decode the HTML entities emitted by engine result pages and API
+  descriptions.
+
+  Named entities come from a table of the ones that actually turn up in
+  titles and snippets; everything numeric is decoded outright, which is
+  where the long tail of accented characters and punctuation lives. An
+  entity with no decoding is left exactly as written rather than mangled
+  into something that looks decoded.
+
+  One pass, so `&amp;lt;` decodes to the literal `&lt;` and not to `<`.
+  Replacing `&amp;` first, as this used to, decoded it twice.
+  """
+  def html_entities(value) when is_binary(value) do
+    Regex.replace(~r/&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,31});/, value, fn
+      match, body -> decode_entity(body) || match
+    end)
   end
+
+  def html_entities(value), do: value
+
+  defp decode_entity("#" <> number) do
+    case number do
+      <<x, hex::binary>> when x in [?x, ?X] -> codepoint(Integer.parse(hex, 16))
+      digits -> codepoint(Integer.parse(digits, 10))
+    end
+  end
+
+  defp decode_entity(name), do: Map.get(@named_entities, name)
+
+  # A codepoint outside the range Unicode defines, or one the surrogate
+  # block reserves, is not decoded: leaving the entity written out is
+  # better than emitting something invalid.
+  defp codepoint({number, ""})
+       when number in 0..0x10FFFF and number not in 0xD800..0xDFFF,
+       do: <<number::utf8>>
+
+  defp codepoint(_), do: nil
 
   @doc """
   Unwrap an engine's redirect link into the URL it actually points at.

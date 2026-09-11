@@ -1,36 +1,132 @@
 {
+  "type": "search",
   "query": {
-    "original": "inurl:about \"co-founder\" \"CTO\" SaaS",
-    "more_results_available": true
+    "original": "\"meet the team\" \"co-founder\" CTO SaaS company",
+    "show_strict_warning": false,
+    "cleaned": "meet the team co-founder CTO SaaS company",
+    "is_navigational": false,
+    "is_news_breaking": false,
+    "spellcheck_off": false,
+    "country": "us",
+    "bad_results": false,
+    "should_fallback": true,
+    "postal_code": "",
+    "city": "",
+    "header_country": "",
+    "more_results_available": false,
+    "state": "",
+    "search_operators": {
+      "applied": true,
+      "cleaned_query": "meet the team co-founder CTO SaaS company"
+    },
+    "related_queries": []
+  },
+  "mixed": {
+    "type": "mixed",
+    "main": [
+      {
+        "type": "web",
+        "index": 0,
+        "all": false
+      },
+      {
+        "type": "web",
+        "index": 1,
+        "all": false
+      }
+    ],
+    "top": [],
+    "side": []
   },
   "web": {
     "type": "search",
     "results": [
       {
-        "title": "About us | Rewind",
-        "url": "https://rewind.com/about/",
-        "description": "Meet the team behind Rewind. James Ciesielski, co-founder and CTO, leads the technical side of the business."
+        "title": "Meet the Team: James Ciesielski, Co-founder and CTO | Rewind",
+        "url": "https://rewind.com/blog/meet-the-team-james-ciesielski-co-founder-chief-technology-officer-rewind/",
+        "is_source_local": false,
+        "is_source_both": false,
+        "description": "For Rewind, this crucial puzzle piece was its co-founder, <strong>James Ciesielski</strong>. Having known his business partner and friend, Mike Potter, since 2012, the two had previously worked together at another startup company before James approached Mike ...",
+        "page_age": "2024-08-30T17:16:59",
+        "profile": {
+          "name": "Rewind",
+          "url": "https://rewind.com/blog/meet-the-team-james-ciesielski-co-founder-chief-technology-officer-rewind/",
+          "long_name": "rewind.com",
+          "img": "https://imgs.search.brave.com/Ea14JElXBMImpaoucjcjHEGx3PnETrsui-R1qLogyEg/rs:fit:32:32:1:0/g:ce/aHR0cDovL2Zhdmlj/b25zLnNlYXJjaC5i/cmF2ZS5jb20vaWNv/bnMvNjU1MjFhNzVi/MWFiOGMwODczOWE1/M2IxODY1YWRkMGNm/MzljY2QwYmE5NTVl/NDA4YjRlMzNhMDEw/NjFiOWNjNi9yZXdp/bmQuY29tLw"
+        },
+        "language": "en",
+        "family_friendly": true,
+        "type": "search_result",
+        "subtype": "article",
+        "is_live": false,
+        "meta_url": {
+          "scheme": "https",
+          "netloc": "rewind.com",
+          "hostname": "rewind.com",
+          "favicon": "https://imgs.search.brave.com/Ea14JElXBMImpaoucjcjHEGx3PnETrsui-R1qLogyEg/rs:fit:32:32:1:0/g:ce/aHR0cDovL2Zhdmlj/b25zLnNlYXJjaC5i/cmF2ZS5jb20vaWNv/bnMvNjU1MjFhNzVi/MWFiOGMwODczOWE1/M2IxODY1YWRkMGNm/MzljY2QwYmE5NTVl/NDA4YjRlMzNhMDEw/NjFiOWNjNi9yZXdp/bmQuY29tLw",
+          "path": "  › home  › blog  › #teamrewind"
+        },
+        "thumbnail": {
+          "src": "https://imgs.search.brave.com/PBEa1Lu7_hfLVKx9j0FA-3in-b4CBV58PbvD5c_6NuA/rs:fit:200:200:1:0/g:ce/aHR0cHM6Ly9yZXdp/bmQuY29tL3dwLWNv/bnRlbnQvdXBsb2Fk/cy8yMDIwLzExL2Ni/OTM2LWphbWVzcmV3/aW5kLnBuZw",
+          "original": "https://rewind.com/wp-content/uploads/2020/11/cb936-jamesrewind.png",
+          "logo": false
+        },
+        "age": "August 30, 2024",
+        "article": {
+          "author": [
+            {
+              "type": "person",
+              "name": "Sarah Bader"
+            }
+          ],
+          "date": "Sep 05, 2018"
+        },
+        "extra_snippets": [
+          "For Rewind, this crucial puzzle piece was its co-founder, James Ciesielski. Having known his business partner and friend, Mike Potter, since 2012, the two had previously worked together at another startup company before James approached Mike one day with the idea to embark on a brand new entrepreneurial journey together. Fast forward to the present: James is now the CTO of Rewind and leads the technical side of the business – creating, bettering, and constantly manning the backup system that helps keep 4,500 customers’ data saved, stored, and protected across e-commerce platforms such as Shopify, BigCommerce, and QuickBooks Online.",
+          "It would be amazing for our little company to grow up and become part of any conversation on local tech successes. Any favourite quote that best motivates you as an ecommerce entrepreneur (or as a developer)? “Customer service is an attitude, not a department.” · I think this quote works, regardless of what business you’re in. I worked for a struggling startup for a brief period of my career, and I was really shocked by the way that the support team spoke about customers.",
+          "From a business standpoint: figuring out the best way to inform Shopify merchants that data loss in SaaS is a thing to begin with. We’re still trying to figure this out, to be honest. In the beginning, most customers would only come to us after they had already had a disaster.",
+          "A group of folks from my first job played an organized pick-up game of hockey and they needed a goalie, so I volunteered as a way to get to know people. I figured I’d be able to stop pucks, despite my poor skating – and I was really wrong. I later took several goalie courses at the Sensplex, where I learned that the goalie is expected to be the strongest and most agile skater on the team."
+        ]
       },
       {
-        "title": "Meet the team &mdash; USAND",
-        "url": "https://universalsearch.io/meet-the-team",
-        "description": "Steve Harnsberger, CEO &amp; Co-Founder, has 25+ years in OTT video metadata."
-      },
-      {
-        "title": "Leadership - Resilio",
-        "url": "https://www.resilio.com/about/",
-        "description": "Our leadership team, including Eric Klinker, Co-Founder &amp; CEO."
-      },
-      {
-        "title": "A result with no usable URL",
-        "url": "not-a-url",
-        "description": "Dropped, because a harvested URL has to be a real one."
-      },
-      {
-        "title": "About us | Rewind",
-        "url": "https://rewind.com/about/",
-        "description": "The same page again, returned twice."
+        "title": "Meet the Team Helping Series A Startups - Companyon Ventures",
+        "url": "https://companyon.vc/team/",
+        "is_source_local": false,
+        "is_source_both": false,
+        "description": "Previously, she was a Senior Events Associate with Without A Hitch, a top-rated day-of wedding coordination company, and a freelance home organizer. Alisha graduated from Marist College, Poughkeepsie, NY and pursued additional studies at the London College of Fashion in London, England. ... Tom is a Co-Founder and General Partner at Companyon Ventures.",
+        "page_age": "2026-07-15T02:52:49",
+        "profile": {
+          "name": "Companyon Ventures",
+          "url": "https://companyon.vc/team/",
+          "long_name": "companyon.vc",
+          "img": "https://imgs.search.brave.com/5Ab2a2m91WK_bQ5FBlty7b5Vt37hB84gfYk61eA7dTw/rs:fit:32:32:1:0/g:ce/aHR0cDovL2Zhdmlj/b25zLnNlYXJjaC5i/cmF2ZS5jb20vaWNv/bnMvZDZkOGYzODUw/MzJjOWFkMGI3MmY0/YjdlNzdjMTgxZTNh/ZmMwMDdjODljNWI4/YjE3OWEzZDg4MThh/Y2Q1NTBhMi9jb21w/YW55b24udmMv"
+        },
+        "language": "en",
+        "family_friendly": true,
+        "type": "search_result",
+        "subtype": "generic",
+        "is_live": false,
+        "meta_url": {
+          "scheme": "https",
+          "netloc": "companyon.vc",
+          "hostname": "companyon.vc",
+          "favicon": "https://imgs.search.brave.com/5Ab2a2m91WK_bQ5FBlty7b5Vt37hB84gfYk61eA7dTw/rs:fit:32:32:1:0/g:ce/aHR0cDovL2Zhdmlj/b25zLnNlYXJjaC5i/cmF2ZS5jb20vaWNv/bnMvZDZkOGYzODUw/MzJjOWFkMGI3MmY0/YjdlNzdjMTgxZTNh/ZmMwMDdjODljNWI4/YjE3OWEzZDg4MThh/Y2Q1NTBhMi9jb21w/YW55b24udmMv",
+          "path": "› team"
+        },
+        "thumbnail": {
+          "src": "https://imgs.search.brave.com/3hmEvnoexUERCq3njbFgTMy5CgmLcPkPSmTmc3FOeLU/rs:fit:200:200:1:0/g:ce/aHR0cHM6Ly9jb21w/YW55b24udmMvd3At/Y29udGVudC91cGxv/YWRzLzIwMjUvMDYv/Y3Ytd2ViLTAwMi5w/bmc",
+          "original": "https://companyon.vc/wp-content/uploads/2025/06/cv-web-002.png",
+          "logo": false
+        },
+        "age": "July 15, 2026",
+        "extra_snippets": [
+          "We’re a humble, roll-up-our-sleeves, hone-your-sales-process, build-your-KPIs, recruit-your-team type of VC firm.",
+          "He leads the sourcing and diligence processes for new investments, as well as supporting portfolio companies such as Posh, Sent, Lendica, and American AI. Prior to Companyon, Andrew attended Princeton University and studied neuroscience and entrepreneurship, and captained the rowing team. Andrew is always down to grab a coffee or go for a run on the west side highway with founders!",
+          "Previously, she was a Senior Events Associate with Without A Hitch, a top-rated day-of wedding coordination company, and a freelance home organizer. Alisha graduated from Marist College, Poughkeepsie, NY and pursued additional studies at the London College of Fashion in London, England. ... Tom is a Co-Founder and General Partner at Companyon Ventures.",
+          "Firas is Co-Founder and General Partner at Companyon Ventures. Some of the investments that Firas led include micro1, Roadsync, Ziflow, Cyvl, and American AI Logistics. Firas has been in the world of software and AI startups for over 25 years and have seen it all."
+        ]
       }
-    ]
+    ],
+    "family_friendly": true
   }
 }

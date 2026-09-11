@@ -3,11 +3,13 @@ defmodule Neuron.Search.BraveTest do
 
   alias Neuron.Search.Brave
 
-  # A response in the shape Brave's Web Search API documents: `web.results`
-  # carrying `title`, `url` and `description`. Constructed from the
-  # documented shape rather than captured from a live call, because no key
-  # was available when this was written. Replace it with a captured response
-  # the first time the live test below is run with one.
+  # A real response, captured from the live API on 2026-09-11 for the query
+  # `"meet the team" "co-founder" CTO SaaS company`, saved verbatim. Every
+  # field the API sent is here, including the ones Neuron ignores.
+  #
+  # Edge cases that a real response does not happen to contain are inline
+  # below as synthetic maps, labelled as such, rather than smuggled into the
+  # capture.
   @fixture "test/support/fixtures/brave_web_search.json"
 
   defp body, do: @fixture |> File.read!() |> Jason.decode!()
@@ -26,31 +28,33 @@ defmodule Neuron.Search.BraveTest do
     Application.put_env(:neuron, :search, Keyword.put(config, :brave, api_key: key))
   end
 
-  test "parses the documented response into results" do
-    assert [first, second, third] = Brave.parse(body())
+  test "parses the captured response into results" do
+    assert [first, second] = Brave.parse(body())
 
-    assert first.title == "About us | Rewind"
-    assert first.url == "https://rewind.com/about/"
-    assert first.snippet =~ "James Ciesielski, co-founder and CTO"
+    assert first.title == "Meet the Team: James Ciesielski, Co-founder and CTO | Rewind"
+    assert first.url =~ "https://rewind.com/blog/meet-the-team-james-ciesielski"
+    assert second.url == "https://companyon.vc/team/"
 
-    # `&amp;` is decoded, because the shared engine helper handles it.
-    assert third.snippet =~ "Eric Klinker, Co-Founder & CEO"
-    assert second.snippet =~ "CEO & Co-Founder"
-
-    # `&mdash;` is not, and passes through as written. Recorded here as the
-    # behaviour that exists rather than the behaviour one might assume:
-    # `Neuron.Search.Engine.html_entities/1` decodes six entities and this
-    # is not one of them, so a real title carrying it reaches a lead intact.
-    # Worth widening that helper, and not as part of adding an engine.
-    assert second.title == "Meet the team &mdash; USAND"
+    # The live API marks up matched terms. Tags are stripped rather than
+    # reaching a lead title as markup.
+    assert first.snippet =~ "James Ciesielski"
+    refute first.snippet =~ "<strong>"
+    refute first.snippet =~ "</strong>"
   end
 
   test "drops a result whose URL is not one, and deduplicates" do
-    urls = Brave.parse(body()) |> Enum.map(& &1.url)
+    # Synthetic, not captured: a real response did not contain either case.
+    body = %{
+      "web" => %{
+        "results" => [
+          %{"title" => "Team", "url" => "https://acme.example/team", "description" => "a"},
+          %{"title" => "No URL", "url" => "not-a-url", "description" => "b"},
+          %{"title" => "Team again", "url" => "https://acme.example/team", "description" => "c"}
+        ]
+      }
+    }
 
-    refute "not-a-url" in urls
-    assert urls == Enum.uniq(urls)
-    assert length(urls) == 3
+    assert [%{url: "https://acme.example/team"}] = Brave.parse(body)
   end
 
   test "parses an equivalent JSON string, and anything unexpected into nothing" do
@@ -70,13 +74,10 @@ defmodule Neuron.Search.BraveTest do
 
     # Every URL the model may select is in links, and nothing else is, so
     # the harvest's exact-URL contract holds without a browser.
-    assert Enum.map(transcript.links, & &1.href) == [
-             "https://rewind.com/about/",
-             "https://universalsearch.io/meet-the-team",
-             "https://www.resilio.com/about/"
-           ]
+    assert Enum.map(transcript.links, & &1.href) == Enum.map(Brave.parse(body()), & &1.url)
+    assert length(transcript.links) == 2
 
-    assert transcript.markdown =~ "[About us | Rewind](https://rewind.com/about/)"
+    assert transcript.markdown =~ "](https://companyon.vc/team/)"
     assert transcript.text =~ "James Ciesielski"
 
     # A keyed API returns no document, so there is no wall to read out of one.
@@ -92,7 +93,7 @@ defmodule Neuron.Search.BraveTest do
                model_provider: Neuron.SearchTest.BraveHarvestModel
              )
 
-    assert result.url == "https://www.resilio.com/about/"
+    assert result.url == "https://companyon.vc/team/"
   end
 
   test "the exact-URL contract holds over a keyed transcript too" do
@@ -107,13 +108,24 @@ defmodule Neuron.Search.BraveTest do
   end
 
   describe "availability" do
-    test "absent without a key, present with one" do
+    test "absent without a key, present with one, from either source" do
+      env = System.get_env("BRAVE_SEARCH_API_KEY")
+      on_exit(fn -> if env, do: System.put_env("BRAVE_SEARCH_API_KEY", env) end)
+
+      # Neither source: absent from the round rather than failing in it.
       with_key(nil)
+      System.delete_env("BRAVE_SEARCH_API_KEY")
       refute Brave.available?()
       refute Brave in Neuron.Search.engines()
 
-      with_key("test-key")
-      assert Brave.available?()
+      # The environment alone is enough, which is how a host supplies it.
+      System.put_env("BRAVE_SEARCH_API_KEY", "from-the-environment")
+      assert Brave.api_key() == "from-the-environment"
+      assert Brave in Neuron.Search.engines()
+
+      # Configuration wins over the environment when both are set.
+      with_key("from-configuration")
+      assert Brave.api_key() == "from-configuration"
       assert Brave in Neuron.Search.engines()
     end
 
