@@ -79,4 +79,21 @@ Published tags are never moved. A tag that has been pushed is a fixed point: som
 
 This was learned by breaking it. `v0.2.3` was force-updated to pick up a later commit on 2026-09-10 and then restored to the commit it was published at, with the change cut as `v0.2.4` instead.
 
+### Cutting a release
+
+Because a tag cannot be corrected once it is pushed, everything about it has to be right before it exists.
+
+```sh
+mix neuron.release.check v0.2.5   # fails unless mix.exs declares 0.2.5
+mix format --check-formatted
+mix test
+bash scripts/dgraph_integration.sh
+git tag -a v0.2.5 -m "..."
+git push origin v0.2.5
+```
+
+`mix neuron.release.check TAG` compares the tag you are about to cut against the version in `mix.exs` and fails when they disagree. Run with no argument it checks whatever tags already point at `HEAD` and passes quietly when there are none, so it is safe in CI on every commit.
+
+The check exists because `v0.2.4` was cut at a commit whose `mix.exs` declared `0.2.3`. That tag reports the wrong version to anyone depending on it and cannot be fixed, because fixing it would mean moving it. The version bump is what gets tagged: bump `mix.exs` in its own commit, run the check against the tag you intend, then tag that commit.
+
 The same rule is why git dependencies are pinned to tags rather than branches: `mix.lock` records a commit, but a branch reference lets the next `mix deps.get` resolve to a different one, which is the same problem one layer down.
