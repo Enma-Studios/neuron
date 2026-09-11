@@ -39,6 +39,29 @@ defmodule Neuron.ContactChannelTest do
     }
   end
 
+  test "a candidate missing a name or an employment claim is not a match, and does not crash" do
+    now = DateTime.utc_now()
+
+    # Both of these leave the match chain returning nil rather than false,
+    # which `not` refuses and `!` accepts. Found by a live run, not a test.
+    nameless =
+      Map.update!(unreachable_record(), "assertions", fn claims ->
+        Enum.reject(claims, &(&1["predicate"] == "name"))
+      end)
+
+    unemployed =
+      Map.update!(unreachable_record(), "assertions", fn claims ->
+        Enum.reject(claims, &(&1["predicate"] == "employer"))
+      end)
+
+    for record <- [nameless, unemployed], require <- [true, false] do
+      assert Neuron.Selection.score(record, campaign(), [1.0, 0.0],
+               require_contact_channel: require,
+               now: now
+             ) == nil
+    end
+  end
+
   test "by default a person with no observed channel is withheld" do
     assert Neuron.Selection.score(unreachable_record(), campaign(), [1.0, 0.0]) ==
              :no_contact_channel

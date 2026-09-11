@@ -116,7 +116,9 @@ defmodule Neuron.Selection do
     require_channel? = Keyword.get(opts, :require_contact_channel, true)
 
     cond do
-      not matched ->
+      # `!` rather than `not`: the match chain returns nil when a candidate
+      # has no name or no employment claim, and `not` demands a boolean.
+      !matched ->
         nil
 
       channels == [] and require_channel? ->
