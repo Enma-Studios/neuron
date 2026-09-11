@@ -88,13 +88,16 @@ defmodule Neuron.Search do
         merged = merge_results(found)
         failures = page_failures ++ harvest_failures
 
-        # A round is unavailable only when no engine answered at all. An
-        # engine that answered with nothing still carried the round, and a
-        # walled or gated engine is a skipped engine, never a failed round.
-        answered =
-          MapSet.new(found, fn {engine, _results} -> engine end)
+        # A round is unavailable only when every enabled engine was actually
+        # attempted and failed. An engine that answered with nothing still
+        # carried the round; a walled or gated engine is a skipped engine;
+        # and an enabled engine nobody asked cannot be evidence that search
+        # is unavailable.
+        answered = MapSet.new(found, fn {engine, _results} -> engine end)
+        attempted = MapSet.new(tasks, & &1.engine)
+        unattempted = Enum.reject(engines(opts), &MapSet.member?(attempted, &1))
 
-        if MapSet.size(answered) == 0 and failures != [] do
+        if MapSet.size(answered) == 0 and failures != [] and unattempted == [] do
           {:error, {:search_unavailable, reason: {:all_searches_failed, failures}}}
         else
           {:ok, merged, failures}
@@ -193,6 +196,42 @@ defmodule Neuron.Search do
         query: search.query,
         url: engine.search_url(keywords)
       }
+    end
+  end
+
+  @doc """
+  Give every enabled engine at least one query in the round.
+
+  A round that asks one engine only has no redundancy: one bot check and
+  the round has nothing, while a healthy engine was never tried. Four of
+  ten runs failed exactly that way with two engines configured.
+
+  Queries are re-targeted, never added, so the round stays inside
+  `searches_per_round`, and only the most crowded engine gives one up, so
+  the planner's per-platform tailoring survives wherever it can.
+  """
+  def balance(searches, enabled) do
+    Enum.reduce(enabled, searches, fn engine, acc ->
+      if Enum.any?(acc, &(&1.engine == engine)), do: acc, else: retarget(acc, engine)
+    end)
+  end
+
+  defp retarget(searches, engine) do
+    case searches
+         |> Enum.frequencies_by(& &1.engine)
+         |> Enum.max_by(&elem(&1, 1), fn -> nil end) do
+      {crowded, count} when count > 1 ->
+        index =
+          searches
+          |> Enum.with_index()
+          |> Enum.filter(fn {search, _} -> search.engine == crowded end)
+          |> List.last()
+          |> elem(1)
+
+        List.update_at(searches, index, &%{&1 | engine: engine})
+
+      _ ->
+        searches
     end
   end
 

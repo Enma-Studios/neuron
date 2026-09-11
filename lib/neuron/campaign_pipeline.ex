@@ -3,8 +3,6 @@ defmodule Neuron.CampaignPipeline do
 
   @moduledoc "Campaign discovery schedules durable source jobs and selects from shared graph evidence."
 
-  @social_engines [Neuron.Search.LinkedIn, Neuron.Search.X]
-
   def stages,
     do: [:prepare, :retrieve, :plan_search, :search, :dispatch, :collect, :rank, :draft, :finish]
 
@@ -56,17 +54,16 @@ defmodule Neuron.CampaignPipeline do
                &Neuron.Search.validate_searches(&1, enabled),
                opts
              ) do
-        searches =
-          searches
-          |> ensure_social_coverage(data.campaign.target_profile, enabled)
-          |> Enum.reject(&(&1 in data.searches))
-
+        searches = Enum.reject(searches, &(&1 in data.searches))
         remaining = Keyword.get(opts, :max_queries, 50) - length(data.searches)
 
+        # Balanced after truncation, or the coverage queries are the ones
+        # the budget drops and the round asks one engine again.
         pending =
           searches
           |> Enum.uniq()
           |> Enum.take(min(remaining, Keyword.get(opts, :searches_per_round, 8)))
+          |> Neuron.Search.balance(enabled)
 
         if pending == [],
           do: {:goto, :draft, Map.put(data, :stop_reason, :search_exhausted)},
@@ -299,32 +296,6 @@ defmodule Neuron.CampaignPipeline do
         Keyword.get(opts, :budget_seconds, 7200)
   end
 
-  # Native social checks are mandatory every round: LinkedIn and X
-  # content is often not indexed by web engines at all, so the pipeline adds
-  # a topic query whenever the planner leaves a social platform uncovered.
-  defp ensure_social_coverage(searches, target_profile, enabled) do
-    covered = MapSet.new(searches, & &1.engine)
-
-    topic =
-      Enum.join(
-        target_profile.markets ++ target_profile.geography ++ target_profile.roles,
-        " "
-      )
-
-    missing =
-      for engine <- @social_engines,
-          engine in enabled,
-          engine not in covered,
-          String.trim(topic) != "",
-          do: %{engine: engine, query: topic}
-
-    searches ++ missing
-  end
-
-  # `engine` and `kind` are the machine-readable half: a host reading a
-  # completed run's failures can tell a skipped engine from a page that
-  # broke, and a run that failed outright carries the same list under
-  # `:search_unavailable`.
   defp search_failure(%{engine: engine, query: query, reason: reason} = failure) do
     %{
       engine: Neuron.Search.engine_id(engine),
