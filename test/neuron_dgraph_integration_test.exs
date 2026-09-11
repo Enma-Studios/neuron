@@ -65,6 +65,34 @@ defmodule Neuron.DgraphIntegrationTest do
     assert person["name"] == "Ada"
     assert person["embedding_e5_384"] != nil
     assert Jason.decode!(person["knowledge_json"])["name"] == "Ada"
+
+    # Every observed assertion must be traceable to the document it was read
+    # from. Ten campaign runs once produced 319 assertions and not one source
+    # edge, which left no way to check an excerpt against its own source.
+    # Scoped to this ingestion's own document rather than the whole database,
+    # so the assertion is about the code under test and not about whatever
+    # else happens to be in a shared instance.
+    assert {:ok, %{"orphans" => orphans}} =
+             Neuron.Graph.query(
+               "query orphans($url: string) { orphans(func: type(Assertion)) @filter(eq(url, $url) AND eq(assertion_kind, \"observed\") AND NOT has(sources)) { uid predicate url } }",
+               %{"$url" => Neuron.Knowledge.canonical_url(url)},
+               connection: connection
+             )
+
+    assert orphans == [], "observed assertions with no source edge: #{inspect(orphans)}"
+
+    assert {:ok, %{"cited" => [assertion]}} =
+             Neuron.Graph.query(
+               "query cited($url: string) { cited(func: type(Assertion)) @filter(eq(url, $url) AND eq(claim_value, \"Ada\")) { excerpt sources { url } } }",
+               %{"$url" => Neuron.Knowledge.canonical_url(url)},
+               connection: connection
+             )
+
+    # The edge points at the document the claim was actually read from, so
+    # the excerpt can be checked against that source rather than against the
+    # whole corpus.
+    assert [%{"url" => cited_url}] = assertion["sources"]
+    assert cited_url == Neuron.Knowledge.canonical_url(url)
   end
 
   test "applies the graph schema and round trips a domain fact", %{connection: connection} do
