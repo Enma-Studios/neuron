@@ -195,6 +195,10 @@ defmodule Neuron.Knowledge do
               "authority" => authority(claim, document),
               "assertion_kind" => "observed",
               "documents" => [%{"uid" => snapshot_id}],
+              # The Source of the document this claim was read from. Without
+              # it a claim cannot be traced back to what it was read from,
+              # and its excerpt cannot be checked against that document.
+              "sources" => [%{"uid" => id("source", canonical_url(document.url))}],
               "subject" => %{"uid" => entity}
             }
           ]
