@@ -242,10 +242,7 @@ defmodule Neuron.Browser.BrowserUse do
       session = handle.session
 
       try do
-        _ =
-          Pinocchio.Browser.visit_and_wait(session, url,
-            timeout: Keyword.get(opts, :timeout, 60_000)
-          )
+        :ok = navigate(session, url, timeout(opts))
 
         page = %{
           url: Pinocchio.Browser.current_url(session),
@@ -275,6 +272,12 @@ defmodule Neuron.Browser.BrowserUse do
         {:ok, page}
       rescue
         error -> {:error, {:browser_use_error, Exception.message(error)}}
+      catch
+        # A CDP call that runs past its GenServer timeout exits rather than
+        # returning, and an exit is not an exception, so `rescue` never saw
+        # it and it killed the caller instead of failing the fetch.
+        :exit, reason -> {:error, {:browser_use_timeout, inspect(reason)}}
+        kind, reason -> {:error, {:browser_use_error, "#{kind}: #{inspect(reason)}"}}
       after
         close_session(handle)
       end
@@ -324,6 +327,34 @@ defmodule Neuron.Browser.BrowserUse do
     else
       {:error, reason} -> {:error, {:browser_use_start, reason}}
     end
+  end
+
+  @doc """
+  Navigate and wait for the page to settle, within the caller's timeout.
+
+  `Pinocchio.Browser.visit_and_wait/3` cannot be used here. It discards the
+  timeout it is given: `expect_navigation/2` ignores its options and
+  `await/1` hardcodes 30 seconds, which is below the fleet's own timeout, so
+  a page allowed 120 seconds was cut off at 30. Worse, that wait is a
+  `GenServer.call` and so it **exits** rather than returning an error, which
+  no `with` can catch and no `rescue` will see.
+
+  Neuron's own readiness poll takes the timeout it is given and returns
+  `{:error, :page_not_ready}`, so a page that never settles fails the fetch
+  instead of killing whatever was waiting on it.
+  """
+  def navigate(session, url, timeout) do
+    _ = Pinocchio.Browser.visit(session, url)
+    # `nil` rather than `url`: a direct fetch accepts wherever a redirect
+    # landed, and records the final URL from the page itself.
+    Neuron.Browser.Fleet.CDP.wait_ready(session, nil, timeout)
+  end
+
+  @doc "The navigation budget: the caller's, then the fleet's, then a minute."
+  def timeout(opts) do
+    Keyword.get(opts, :timeout) ||
+      (Application.get_env(:neuron, :browser, [])[:fleet] || [])[:timeout] ||
+      60_000
   end
 
   defp record_session_usage(%{opened_at: opened_at} = usage) do

@@ -64,7 +64,9 @@ Invalid events return `{:error, {:invalid_event, state, event}}`; stale versions
 
 ## Campaigns and research
 
-`Neuron.Campaign.intake/2` normalizes user details and optionally scrapes a website. `questions/0` provides the eight-field intake definition. Missing details and multiple campaign proposals are explicit tagged results. `approve/2` accepts all or zero-based selection indexes. `run_many/2` runs approved campaigns separately.
+`Neuron.Campaign.intake/2` normalizes user details and optionally scrapes a website. **Scraping fills answers that are missing; it is not a precondition for answers that were supplied.** A caller who answered every question gets a campaign even when the URL cannot be fetched or parsed, and a caller who answered some is asked only for the rest, never for the whole set again.
+
+When a scrape does fail, the reason names the step that failed as `{step, reason}` on `scrape_error`: `:fetch`, `:html`, `:normalize`, `:save_document`, `:prompt`, `:model` or `:decode`. Only `:fetch` means the URL was the problem. `questions/0` provides the eight-field intake definition. Missing details and multiple campaign proposals are explicit tagged results. `approve/2` accepts all or zero-based selection indexes. `run_many/2` runs approved campaigns separately.
 
 After explicit proposal approval, start `Neuron.Coordinator.Campaign` with `%{approved_campaign: campaign}` to validate the approved brief without inferring new proposals. Callers are responsible for presenting proposals and obtaining that approval.
 

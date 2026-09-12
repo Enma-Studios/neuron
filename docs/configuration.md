@@ -87,6 +87,8 @@ Result links in a rendered results page are the engine's own tracking redirects,
 
 Interaction-heavy pages (LinkedIn, X, Reddit, and other rendered feeds, configurable through `:neuron, :browser, :rich_hosts`) are never snapshotted whole: a bundled Turndown build is injected in the browser, and only the cleaned main section travels back as Markdown — both for search transcripts and for ingested source documents.
 
+A direct fetch navigates and then waits for the page to settle, within `timeout:` if the caller gave one, otherwise the fleet's `timeout`. A page that never settles is `{:error, :page_not_ready}`, and a browser call that runs past its own deadline is `{:error, {:browser_use_timeout, _}}` rather than an exit that kills the caller.
+
 Campaign searches run as one fleet wave: `sessions` Browser Use cloud sessions each multiplex `pages_per_session` concurrent tabs, so concurrency scales with pages rather than browser count — 1 x 4 = 4 concurrent pages by default. One sub-agent controls each page and returns a transcript (final URL, title, text, links); the model then harvests prospect URLs from the transcripts, and every harvested URL must literally appear in its transcript. `:neuron, :browser, :fleet` accepts `sessions`, `pages_per_session`, and `timeout`.
 
 ## Per-run options
