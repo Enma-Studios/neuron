@@ -232,9 +232,54 @@ defmodule Neuron.Campaign do
       parsed = normalize_keys(parsed)
 
       {:ok,
-       Map.drop(parsed, [:campaigns])
+       Map.drop(parsed, [:campaigns, "sources"])
        |> Map.put(:candidate_campaigns, List.wrap(parsed[:campaigns]))
-       |> Map.put(:url, url)}
+       |> Map.put(:url, url)
+       |> Map.put(:source_url, url)
+       # The page's Markdown travels with the campaign so a host that never
+       # reads Dgraph still has what the excerpts point into.
+       # ponytail: the whole page is re-serialized at each stage checkpoint;
+       # store it once against the run if a seller page ever gets large.
+       |> Map.put(:source_markdown, snapshot.markdown)
+       |> Map.put(:field_sources, field_sources(parsed["sources"], snapshot.markdown, url))}
+    end
+  end
+
+  @doc """
+  Anchor the model's quotes back into the page they came from.
+
+  A summary is the model's sentence; an excerpt has to be the page's, so
+  every quote is returned as the Markdown's own bytes and a host can find it
+  there. A quote that differs only in whitespace is relocated; one that is
+  nowhere on the page is dropped rather than shipped as evidence for a
+  sentence nobody wrote.
+  """
+  def field_sources(sources, markdown, url) when is_map(sources) do
+    for {key, quoted} <- sources,
+        is_binary(quoted),
+        excerpt = anchor(quoted, markdown),
+        into: %{},
+        do: {input_key(to_string(key)), %{excerpt: excerpt, source_url: url}}
+  end
+
+  def field_sources(_sources, _markdown, _url), do: %{}
+
+  defp anchor(quoted, markdown) do
+    quoted = String.trim(quoted)
+
+    cond do
+      quoted == "" -> nil
+      String.contains?(markdown, quoted) -> quoted
+      true -> relocate(quoted, markdown)
+    end
+  end
+
+  defp relocate(quoted, markdown) do
+    pattern = quoted |> String.split() |> Enum.map(&Regex.escape/1) |> Enum.join("\\s+")
+
+    case Regex.run(~r/#{pattern}/u, markdown, return: :index) do
+      [{start, length}] -> binary_part(markdown, start, length)
+      _ -> nil
     end
   end
 
