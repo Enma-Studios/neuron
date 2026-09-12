@@ -52,7 +52,46 @@ is given and returns `{:error, :page_not_ready}`. `BrowserUse.navigate/3` now us
 immediately, because a direct fetch accepts wherever a redirect landed, and a browser module
 argument so the poll is testable without a browser.
 
-## Why the third visit hangs: not answered
+## Why the third visit hangs: not answered, and now tried properly
+
+**Addendum, 2026-09-11 evening.** The URL was supplied afterwards: `https://nyx-labs.org/`, in
+the intake scrape, with the host's profile unset. It still does not reproduce.
+
+The site is not the cause. It answers 200 in 1.3 seconds with 12,833 bytes, no redirects, a
+plain static document with `last-modified` from August.
+
+Seven conditions, 31 navigations, 20 browser sessions, $0.1056:
+
+| condition | URL | profile | result |
+| --- | --- | --- | --- |
+| three separate `fetch/2` | rewind.com | set | 15.7s, 8.7s, 6.8s, all ok |
+| four consecutive `visit_and_wait/3`, one session | rewind.com | set | 3.1s, 1.4s, 1.4s, 1.3s, all ok |
+| three separate `fetch/2` | **nyx-labs.org** | **unset** | 5.3s, 5.5s, 5.1s, all ok |
+| three `visit_and_wait/3`, one session, the old path | **nyx-labs.org** | **unset** | 5.2s, 0.3s, 0.4s, all ok |
+| three `navigate/3`, one session, the new path | **nyx-labs.org** | **unset** | 2.2s, 0.7s, 0.8s, all ok |
+| **three real `Campaign.intake/2` passes**, with Dgraph and the model | **nyx-labs.org** | **unset** | 22.6s, 16.3s, 28.1s, all scraped, `scrape_error: nil` |
+| five concurrent sessions, three visits each | **nyx-labs.org** | **unset** | 15 visits, slowest 5.0s, all ok |
+
+The third visit was specifically checked in every sequential condition, including against the
+unfixed `Pinocchio.Browser.visit_and_wait/3` rather than only the replacement. Nothing came
+near the 30 second wait, let alone past it.
+
+**So the trigger is not the URL, not the missing profile, not session reuse, not repetition,
+and not concurrent session pressure.** What is left is something about that particular run:
+provider-side state on the day, a transient network condition, or an account-level limit that
+was being hit then and is not now. The report is dated 2026-09-11 and this was run the same
+evening, which narrows it further without settling it.
+
+This is recorded so nobody pays to run it again. If it recurs, the thing to capture is the
+Browser Use session id and the `[:neuron, :browser, :session]` telemetry for the run, because
+the provider's own record of that session is the one piece of evidence this reproduction
+cannot manufacture.
+
+The fix stands on its own either way, and is what makes a recurrence survivable rather than
+fatal: whatever hangs is now `{:error, :page_not_ready}` at the caller's timeout instead of an
+exit at a hardcoded 30 seconds that no `with` could match and no `rescue` could see.
+
+## Why the third visit hangs: the original attempt
 
 **I could not reproduce the hang**, and I am not going to assert a cause I did not observe.
 Against `rewind.com/about/` with the profile set:
