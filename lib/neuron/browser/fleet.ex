@@ -168,27 +168,33 @@ defmodule Neuron.Browser.Fleet.CDP do
   end
 
   @doc """
-  Poll until the page reports the target host and its rendered size stops
-  changing. Load events cannot be used here: any concurrent tab on the
+  Poll until the page's rendered size stops changing and, when a URL is
+  given, until it reports that URL's host. Pass `nil` to wait only for the
+  page to settle, which is what a direct fetch wants: it accepts wherever a
+  redirect landed. Load events cannot be used here: any concurrent tab on the
   same session can trigger them. Probes ship an integer, never the
   document — the connection process serializes every tab's traffic, and
   full-source polls starve it. A page that never settles is an error,
   not a partial result.
   """
-  @spec wait_ready(term(), String.t(), timeout()) :: :ok | {:error, :page_not_ready}
-  def wait_ready(page, url, timeout) do
+  @spec wait_ready(term(), String.t() | nil, timeout(), module()) ::
+          :ok | {:error, :page_not_ready}
+  def wait_ready(page, url, timeout, browser \\ Pinocchio.Browser) do
     deadline = System.monotonic_time(:millisecond) + timeout
-    poll_ready(page, url, deadline, nil)
+    poll_ready(page, url, deadline, nil, browser)
   end
 
-  defp poll_ready(page, url, deadline, previous_size) do
-    size = source_size(page)
+  defp poll_ready(page, url, deadline, previous_size, browser) do
+    size = source_size(page, browser)
     expected_host = host_of(url)
 
+    # Settling is always required. The host check is only meaningful when a
+    # host is expected: a direct fetch accepts wherever a redirect landed and
+    # passes `nil`, while a fleet tab must confirm it is reading its own page
+    # and not a sibling tab's.
     ready? =
-      is_nil(expected_host) or
-        (host_of(Pinocchio.Browser.current_url(page)) == expected_host and
-           settled?(size, previous_size))
+      settled?(size, previous_size) and
+        (is_nil(expected_host) or host_of(browser.current_url(page)) == expected_host)
 
     cond do
       ready? ->
@@ -199,12 +205,12 @@ defmodule Neuron.Browser.Fleet.CDP do
 
       true ->
         Process.sleep(@poll_interval)
-        poll_ready(page, url, deadline, size)
+        poll_ready(page, url, deadline, size, browser)
     end
   end
 
-  defp source_size(page) do
-    case Pinocchio.Browser.execute_script(page, "document.documentElement.outerHTML.length") do
+  defp source_size(page, browser) do
+    case browser.execute_script(page, "document.documentElement.outerHTML.length") do
       {:ok, %{"result" => %{"value" => size}}} when is_integer(size) -> size
       _ -> 0
     end
@@ -212,6 +218,8 @@ defmodule Neuron.Browser.Fleet.CDP do
 
   defp settled?(size, previous_size),
     do: is_integer(previous_size) and size == previous_size and size > @minimal_source
+
+  defp host_of(nil), do: nil
 
   defp host_of(url) do
     case URI.parse(url) do

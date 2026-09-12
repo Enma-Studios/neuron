@@ -270,3 +270,10 @@ defmodule Neuron.SearchTest.KeyedEngine do
      }}
   end
 end
+
+
+# A page whose rendered size has stopped changing.
+defmodule Neuron.BrowserTest.SettledPage do
+  def execute_script(_page, _script), do: {:ok, %{"result" => %{"value" => 4096}}}
+  def current_url(_page), do: "https://acme.example/team"
+end

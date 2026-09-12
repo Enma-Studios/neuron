@@ -103,24 +103,33 @@ defmodule Neuron.Campaign do
   end
 
   defp intake_answers(answers, url, opts) do
-    with {:ok, scraped} <- scrape_answers(url, opts),
-         merged <- Map.merge(scraped, answers),
-         :ok <- approve_if_needed(merged),
+    case scrape_answers(url, opts) do
+      {:ok, scraped} -> take(Map.merge(scraped, answers))
+      {:error, cause} -> without_scrape(answers, cause)
+    end
+  end
+
+  # Scraping a URL fills answers that are missing. It is not a precondition
+  # for answers that were supplied, and a caller who answered every question
+  # must not be asked them all again because a page did not parse.
+  defp without_scrape(answers, cause) do
+    case take(answers) do
+      {:ok, campaign} ->
+        {:ok, campaign}
+
+      {:needs_input, details} ->
+        {:needs_input, Map.put(details, :scrape_error, cause)}
+
+      other ->
+        other
+    end
+  end
+
+  defp take(merged) do
+    with :ok <- approve_if_needed(merged),
          merged <- merge_approved_campaign(merged),
          {:ok, campaign} <- normalize_campaign(merged) do
       {:ok, campaign}
-    else
-      {:approval_required, details} ->
-        {:approval_required, details}
-
-      {:needs_input, details} ->
-        {:needs_input, details}
-
-      {:error, _reason} when is_binary(url) ->
-        {:needs_input, %{questions: questions(), partial: answers, reason: :url_unavailable}}
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -191,48 +200,52 @@ defmodule Neuron.Campaign do
   defp scrape_answers("", _opts), do: {:ok, %{}}
 
   defp scrape_answers(url, opts) when is_binary(url) do
-    with {:ok, page} <- Neuron.Browser.fetch(url, opts),
-         html when is_binary(html) <- page[:html] || page["html"],
-         {:ok, snapshot} <-
-           Neuron.Snapshot.from_html(html, %{url: url, title: page[:title], run_id: opts[:run_id]}),
-         {:ok, _} <-
-           Neuron.Knowledge.save_document(
-             %{
-               url: url,
-               title: page[:title] || "",
-               markdown: snapshot.markdown,
-               published_at: nil,
-               fetched_at: DateTime.utc_now()
-             },
-             opts
-           ),
+    document = fn snapshot ->
+      %{
+        url: url,
+        title: "",
+        markdown: snapshot.markdown,
+        published_at: nil,
+        fetched_at: DateTime.utc_now()
+      }
+    end
+
+    with {:ok, page} <- step(:fetch, Neuron.Browser.fetch(url, opts)),
+         {:ok, html} <- step(:html, page[:html] || page["html"]),
+         snapshot_attrs = %{url: url, title: page[:title], run_id: opts[:run_id]},
+         {:ok, snapshot} <- step(:normalize, Neuron.Snapshot.from_html(html, snapshot_attrs)),
+         attrs = %{document.(snapshot) | title: page[:title] || ""},
+         {:ok, _} <- step(:save_document, Neuron.Knowledge.save_document(attrs, opts)),
+         assigns = %{url: url, evidence: String.slice(snapshot.markdown, 0, 16_000)},
          {:ok, prompt} <-
-           Neuron.Prompt.render_file(
-             "campaign_intake.eex",
-             %{url: url, evidence: String.slice(snapshot.markdown, 0, 16_000)},
-             opts
-           ),
+           step(:prompt, Neuron.Prompt.render_file("campaign_intake.eex", assigns, opts)),
+         messages = [
+           %{role: "system", content: "Extract campaign facts as JSON only."},
+           %{role: "user", content: prompt}
+         ],
          {:ok, response} <-
-           model(opts).complete(
-             [
-               %{role: "system", content: "Extract campaign facts as JSON only."},
-               %{role: "user", content: prompt}
-             ],
-             Keyword.put(opts, :task_id, "campaign:intake")
+           step(
+             :model,
+             model(opts).complete(messages, Keyword.put(opts, :task_id, "campaign:intake"))
            ),
-         {:ok, parsed} <- decode(response) do
+         {:ok, parsed} <- step(:decode, decode(response)) do
       parsed = normalize_keys(parsed)
-      proposals = List.wrap(parsed[:campaigns])
 
       {:ok,
        Map.drop(parsed, [:campaigns])
-       |> Map.put(:candidate_campaigns, proposals)
+       |> Map.put(:candidate_campaigns, List.wrap(parsed[:campaigns]))
        |> Map.put(:url, url)}
-    else
-      {:error, reason} -> {:error, reason}
-      nil -> {:error, :page_without_html}
     end
   end
+
+  # Each step says which step it was. The whole chain used to collapse into
+  # one `{:error, reason}` and then into `:url_unavailable`, so a snapshot
+  # that would not normalize, a prompt that would not render and a model that
+  # timed out all read as a URL problem, on a site that returned 200.
+  defp step(_stage, {:ok, value}), do: {:ok, value}
+  defp step(stage, {:error, reason}), do: {:error, {stage, reason}}
+  defp step(stage, nil), do: {:error, {stage, :missing}}
+  defp step(_stage, value), do: {:ok, value}
 
   @doc "Validate a supplied or approved campaign brief."
   def normalize_campaign(values) do
