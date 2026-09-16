@@ -84,6 +84,31 @@ Campaigns search for external prospects, ingest documents into the shared graph,
 
 Harvested URLs that are articles rather than pages a company publishes about itself are dropped before ingestion, decided from the URL alone with no reliance on the harvest prompt: publishing platforms (medium.com, substack.com and similar), `blog.` hosts, non-HTML files such as `llms.txt`, blog, post, article, insight, news, author, tag and pulse paths, dated paths, listicle slugs (`top-25-...`, `...-of-2025`), and slugs of five or more words. Each is recorded in `rejected_sources` as `%{url, reason}`.
 
+### What a host sends for the organization gates
+
+The size and industry gates do nothing unless the host sends their fields. Neuron never infers them from `target_organizations`: a sentence such as "Software companies between 20 and 300 people" there is used for search and market fit, not as a gate.
+
+Send them with the other intake answers, or inside `target_profile` of an approved campaign:
+
+```elixir
+Neuron.Campaign.intake(%{
+  url: "https://nyx-labs.org/",
+  target_roles: "Heads of engineering, VPs of engineering and CTOs",
+  target_organizations: "Software product companies and SaaS businesses",
+  company_size: %{min: 20, max: 300},
+  industries: ["software", "SaaS", "fintech"],
+  exclusions: "Not agencies, not security vendors, not bug bounty or disclosure programmes.",
+  lead_count: 5
+})
+```
+
+- **`company_size`** is a map `%{min: integer, max: integer}` in employees. Either bound may be `nil` or left out for an open range (`%{min: 20}`). String keys (`"min"`, `"max"`) are accepted; the bounds themselves must be integers, not strings. An organization is rejected when every size it states is below `min` or above `max`: "5,000+" against `max: 300` is rejected, "51-200" against 20 to 300 passes.
+- **`industries`** is a list of terms. An organization passes when its extracted industry or description contains any term as whole words, case-insensitively: `"SaaS"` matches "A SaaS payroll platform" but not "SaaSy". Send short terms, not sentences; a sentence is matched as one term and will almost never appear.
+- **Unknowns pass.** An organization that states no employee count passes the size gate, and one with no industry or description passes the industry gate. Both are counted in `selection.unknown_by`, so a run can show how much the gates could not see. Size is only known where the organization's own pages state it.
+- **Rejections are counted** in `selection.rejected_by.size` and `selection.rejected_by.industry`, and each rejected person appears in `selection.rejected_people` with `:size` or `:industry` in `checks`.
+
+`exclusions` is separate from both gates: it is split into one term per clause and matched against the person's facts and their employer's name, description and industry.
+
 A person must match the campaign on every check before they are scored: a sourced `name`; an observed `employer` at authority 0.8 or higher (`employer`), which is not the seller (`seller`); a title holding one of the target roles or titles as whole words (`role`); a location matching the target geography, when one is given (`geography`); and none of the exclusions in the person's facts or in their employer organization's name, description or industry (`exclusion`). The `exclusions` field is split into one term per clause on commas and semicolons, dropping a leading "not" or "no", so "Not agencies, not security vendors." becomes `["agencies", "security vendors"]`. Two gates read the employer organization when the campaign sets them: `target_profile.company_size` (`%{min, max}` employees, either bound optional) rejects an organization whose stated `employee_count` falls outside the range (`size`), and `target_profile.industries` rejects one whose industry and description contain none of the terms as whole words (`industry`). Both come from the intake fields `company_size` and `industries`. An organization that states no size, or no industry or description, passes the gate and is counted in `unknown_by`; nothing is inferred. A match then needs `fit_score` at or above `selection_threshold` (default 0.5; `fit_profile.threshold` is not used by campaign ranking) (`threshold`). Campaign roles are usually categories no title contains, so `:prepare` makes one model call to expand `target_profile.roles` into the concrete job titles a team page prints, kept as `target_profile.titles`.
 
 `selection` accounts for the latest ranking pass: `%{considered, ranked, rejected, rejected_people, withheld_contact, rejected_by, unknown_by}`, where `rejected_by` counts, for each check above, the candidates that failed it (one candidate can fail several). `rejected_people` lists each rejected candidate as `%{person_id, name, title, employer, checks}`, so a rejection can be checked against the person it was made on. `considered: 0` means nobody reached the scorer; `rejected > 0` with `ranked: 0` means people were scored and rejected, and `rejected_by` names the check. It is also on `stage_data.selection` while a run is in progress, so a cancelled run keeps it. `fit_score` is written to the graph only on delivered `Lead` nodes, so a run with no leads leaves none.
