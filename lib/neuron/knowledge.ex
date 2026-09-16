@@ -18,6 +18,7 @@ defmodule Neuron.Knowledge do
   end
 
   def entity_id("Organization", identity), do: id("org", domain(identity))
+  def entity_id(type, "urn:" <> _ = identity), do: id(String.downcase(type), identity)
   def entity_id(type, identity), do: id(String.downcase(type), canonical_url(identity))
 
   @doc "Record an explicit caller assertion; it overrides observed values but is not contact verification."
@@ -98,6 +99,8 @@ defmodule Neuron.Knowledge do
   is a valid outcome — the snapshot is already saved as evidence.
   """
   def validate_claims(%{"claims" => claims}, document) when is_list(claims) do
+    claims = own_site_people(claims, document)
+
     {kept, dropped} =
       Enum.split_with(claims, fn attrs ->
         match?({:ok, _}, supported_claim(attrs, document))
@@ -121,6 +124,57 @@ defmodule Neuron.Knowledge do
 
   def validate_claims(_, _), do: {:error, :expected_claims_array}
 
+  @doc """
+  The identity of a person an organization names on its own site: stable
+  per employer and name, since such a page links no profile to identify
+  them by.
+  """
+  def person_urn(employer, name) do
+    slug =
+      name
+      |> String.downcase()
+      |> String.replace(~r/[^\p{L}\p{N}]+/u, "-")
+      |> String.trim("-")
+
+    "urn:neuron:person:#{domain(employer)}:#{slug}"
+  end
+
+  # A leadership or team page often names people without linking a profile,
+  # and is still the employer stating on its own domain who holds which
+  # role. A person identified by name is kept when the same response gives
+  # them an employer that owns the page and the name is on it; anywhere else
+  # a name alone identifies nobody.
+  defp own_site_people(claims, document) do
+    host = domain(document.url)
+
+    employers =
+      for %{"entity_type" => "Person", "identity" => name, "predicate" => "employer"} = claim <-
+            claims,
+          is_binary(name) and String.trim(name) != "" and not valid_http_url?(name),
+          is_binary(claim["value"]),
+          owns?(domain(claim["value"]), host),
+          String.contains?(document.markdown, name),
+          into: %{},
+          do: {name, claim["value"]}
+
+    Enum.map(claims, fn
+      %{"entity_type" => "Person", "identity" => name} = claim
+      when is_map_key(employers, name) ->
+        Map.put(claim, "identity", person_urn(employers[name], name))
+
+      claim ->
+        claim
+    end)
+  end
+
+  defp owns?("", _host), do: false
+  defp owns?(employer, host), do: host == employer or String.ends_with?(host, "." <> employer)
+
+  defp urn_employer("urn:neuron:person:" <> rest),
+    do: rest |> String.split(":") |> List.first()
+
+  defp urn_employer(_), do: nil
+
   defp supported_claim(attrs, document) when is_map(attrs) do
     with {:ok, claim} <- Neuron.Contracts.validate(Neuron.Contracts.Claim, attrs),
          true <- claim.source_url == document.url,
@@ -131,7 +185,8 @@ defmodule Neuron.Knowledge do
              String.contains?(String.downcase(claim.excerpt), String.downcase(claim.value)),
          true <-
            claim.entity_type == "Organization" or
-             String.starts_with?(claim.identity, ["https://", "http://"]) do
+             String.starts_with?(claim.identity, ["https://", "http://"]) or
+             own_site_identity?(claim, document) do
       {:ok, claim}
     else
       false -> {:error, :unsupported_claim}
@@ -150,9 +205,17 @@ defmodule Neuron.Knowledge do
              String.contains?(document.markdown, claim.identity))
 
       _ ->
-        valid_http_url?(claim.identity) and
-          (canonical_url(claim.identity) == canonical_url(document.url) or
-             String.contains?(document.markdown, claim.identity))
+        own_site_identity?(claim, document) or
+          (valid_http_url?(claim.identity) and
+             (canonical_url(claim.identity) == canonical_url(document.url) or
+                String.contains?(document.markdown, claim.identity)))
+    end
+  end
+
+  defp own_site_identity?(claim, document) do
+    case urn_employer(claim.identity) do
+      nil -> false
+      employer -> owns?(employer, domain(document.url))
     end
   end
 
@@ -203,13 +266,7 @@ defmodule Neuron.Knowledge do
             }
           ]
         }
-        |> Map.put(
-          if(claim.entity_type == "Organization", do: "domain", else: "profile_url"),
-          if(claim.entity_type == "Organization",
-            do: domain(claim.identity),
-            else: canonical_url(claim.identity)
-          )
-        )
+        |> identify(claim)
       end)
 
     with :ok <- Neuron.Graph.upsert(nodes, opts) do
@@ -226,10 +283,25 @@ defmodule Neuron.Knowledge do
     end
   end
 
+  # An organization's domain, or a person's profile URL. A person named on
+  # their employer's own page has no profile URL to record.
+  defp identify(node, %{entity_type: "Organization"} = claim),
+    do: Map.put(node, "domain", domain(claim.identity))
+
+  defp identify(node, claim) do
+    if valid_http_url?(claim.identity),
+      do: Map.put(node, "profile_url", canonical_url(claim.identity)),
+      else: node
+  end
+
   defp authority(claim, document) do
     host = domain(document.url)
 
     cond do
+      # The employer naming its own people on its own domain.
+      (employer = urn_employer(claim.identity)) && owns?(employer, host) ->
+        1.0
+
       claim.predicate == "employer" and domain(claim.value) == host ->
         1.0
 
