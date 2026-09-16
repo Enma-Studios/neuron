@@ -83,6 +83,9 @@ defmodule Neuron.CampaignPipelineIntegrationTest do
                 end)
             }
 
+          String.contains?(prompt, "Expand the target roles") ->
+            %{titles: ["CTO"]}
+
           String.contains?(prompt, "Plan the next round of platform-tailored searches") ->
             %{
               searches: [
