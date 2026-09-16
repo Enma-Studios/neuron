@@ -1,0 +1,5 @@
+Expand the target roles below into the concrete job titles a company would print for those people on its own team, about or leadership page.
+Each role may be a category ("technology leaders"), a description ("people who own security at a startup") or already a title. Return the titles people in those roles actually hold, including common abbreviations such as CTO or VP Engineering as separate entries. Use only titles that fit the roles; do not add unrelated seniorities or functions.
+Return {"titles":["<title>"]} with at most 25 titles.
+Target roles:
+<%= @roles %>

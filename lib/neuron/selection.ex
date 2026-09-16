@@ -18,8 +18,10 @@ defmodule Neuron.Selection do
   @personal ~w(gmail.com yahoo.com outlook.com hotmail.com proton.me protonmail.com icloud.com)
   @generic ~w(info hello contact sales support office admin enquiries inquiries team careers press)
 
+  @checks ~w(name employer seller role geography exclusion threshold)a
+
   def enrichment_candidates(campaign, opts) do
-    query = Enum.join(campaign.target_profile.markets ++ campaign.target_profile.roles, " ")
+    query = query_terms(campaign.target_profile)
 
     Neuron.Graph.query(
       "query gaps($q: string) { candidates(func: anyoftext(knowledge_text, $q), first: 30) @filter(type(Person)) { profile_url knowledge_json assertions { predicate claim_value url } } }",
@@ -29,7 +31,7 @@ defmodule Neuron.Selection do
   end
 
   def candidates(campaign, opts) do
-    query = Enum.join(campaign.target_profile.markets ++ campaign.target_profile.roles, " ")
+    query = query_terms(campaign.target_profile)
 
     with {:ok, vector} <-
            Neuron.Embedding.provider().embed(
@@ -48,22 +50,40 @@ defmodule Neuron.Selection do
              %{"$v" => vector, "$space" => Neuron.Embedding.space()},
              opts
            ) do
-      scored =
-        Neuron.GraphSearch.fuse(lexical, semantic)
-        |> Enum.map(&score(&1, campaign, vector, opts))
+      {ranked, selection} =
+        Neuron.GraphSearch.fuse(lexical, semantic) |> select(campaign, vector, opts)
 
-      ranked =
-        scored
-        |> Enum.filter(&is_map/1)
-        |> Enum.sort_by(&{-&1.contact_priority, -&1.fit_score, &1.person_id})
-
-      # People who matched the campaign but had no observed way to reach
-      # them. Counted, not discarded silently, so a caller can tell "no
-      # companies matched" from "companies matched, no contact channel".
-      withheld = Enum.count(scored, &(&1 == :no_contact_channel))
-
-      {:ok, ranked, withheld}
+      {:ok, ranked, selection}
     end
+  end
+
+  @doc """
+  Rank `records` for `campaign` and account for every one that was not
+  ranked. A run that returns no leads is otherwise the same to a host
+  whether nobody was considered or everybody was rejected.
+
+  `rejected_by` counts, per check, the candidates that failed it; one
+  candidate can fail several. People who matched but had no observed contact
+  channel are `withheld_contact`, so a caller can tell "no companies matched"
+  from "companies matched, no contact channel".
+  """
+  def select(records, campaign, vector, opts \\ []) do
+    results = Enum.map(records, &evaluate(&1, campaign, vector, opts))
+    rejections = for {:rejected, checks} <- results, do: checks
+
+    ranked =
+      for({:lead, lead} <- results, do: lead)
+      |> Enum.sort_by(&{-&1.contact_priority, -&1.fit_score, &1.person_id})
+
+    {ranked,
+     %{
+       considered: length(records),
+       ranked: length(ranked),
+       withheld_contact: Enum.count(results, &(&1 == :no_contact_channel)),
+       rejected: length(rejections),
+       rejected_by:
+         Map.new(@checks, fn check -> {check, Enum.count(rejections, &(check in &1))} end)
+     }}
   end
 
   @doc """
@@ -77,6 +97,14 @@ defmodule Neuron.Selection do
   channels, and everything else about the lead is unchanged.
   """
   def score(record, campaign, vector, opts \\ []) do
+    case evaluate(record, campaign, vector, opts) do
+      {:lead, lead} -> lead
+      {:rejected, _checks} -> nil
+      :no_contact_channel -> :no_contact_channel
+    end
+  end
+
+  defp evaluate(record, campaign, vector, opts) do
     claims = Neuron.Knowledge.resolve(record["assertions"] || [])
     facts = Map.new(claims, fn {key, c} -> {key, c["claim_value"]} end)
     target = campaign.target_profile
@@ -85,7 +113,10 @@ defmodule Neuron.Selection do
     title = facts["title"] || ""
     location = facts["location"] || ""
     text = Enum.join(Map.values(facts), " ")
-    role = match_terms(target.roles, title)
+    # Titles are the concrete job titles the campaign's roles were expanded
+    # into. Roles are usually categories ("technology leaders") that no
+    # title contains, so without them nobody matched at all.
+    role = match_words(target.roles ++ Map.get(target, :titles, []), title)
     geography = match_terms(target.geography, location)
     employment = observed_claim(record, "employer", facts["employer"])
     email_claim = observed_claim(record, "email", facts["email"])
@@ -106,20 +137,23 @@ defmodule Neuron.Selection do
     # Matching the campaign and having an observed way to reach the person
     # are two different questions, and the host answers the second one
     # itself through its contact provider waterfall.
-    matched =
-      facts["name"] && employer != "" && employer != campaign.seller_profile.domain &&
-        employment &&
-        (employment["authority"] || 0) >= 0.8 &&
-        role > 0 && geography > 0 &&
-        not Enum.any?(target.exclusions, &contains?(text, &1))
+    failed =
+      [
+        name: !facts["name"],
+        employer: employer == "" or !employment or (employment["authority"] || 0) < 0.8,
+        seller: employer != "" and employer == campaign.seller_profile.domain,
+        role: role == 0,
+        geography: geography == 0,
+        exclusion: Enum.any?(target.exclusions, &contains?(text, &1))
+      ]
+      |> Enum.filter(&elem(&1, 1))
+      |> Keyword.keys()
 
     require_channel? = Keyword.get(opts, :require_contact_channel, true)
 
     cond do
-      # `!` rather than `not`: the match chain returns nil when a candidate
-      # has no name or no employment claim, and `not` demands a boolean.
-      !matched ->
-        nil
+      failed != [] ->
+        {:rejected, failed}
 
       channels == [] and require_channel? ->
         :no_contact_channel
@@ -186,7 +220,9 @@ defmodule Neuron.Selection do
             Map.merge(Neuron.Telemetry.trace_metadata(opts), result)
           )
 
-          result
+          {:lead, result}
+        else
+          {:rejected, [:threshold]}
         end
     end
   end
@@ -272,6 +308,19 @@ defmodule Neuron.Selection do
 
   defp match_terms(terms, text),
     do: if(Enum.any?(terms, &contains?(text, &1)), do: 1.0, else: 0.0)
+
+  defp match_words([], _), do: 1.0
+
+  defp match_words(terms, text),
+    do: if(Enum.any?(terms, &word?(text, &1)), do: 1.0, else: 0.0)
+
+  # A title must hold the term as whole words: "Director" contains the
+  # letters of "CTO" and is not one.
+  defp word?(text, term),
+    do: Regex.match?(~r/(?<![\p{L}\p{N}])#{Regex.escape(term)}(?![\p{L}\p{N}])/iu, text)
+
+  defp query_terms(target),
+    do: Enum.join(target.markets ++ target.roles ++ Map.get(target, :titles, []), " ")
 
   defp contains?(text, term), do: String.contains?(String.downcase(text), String.downcase(term))
   defp freshness(nil, _), do: 0.0

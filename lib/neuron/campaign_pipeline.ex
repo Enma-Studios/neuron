@@ -11,25 +11,27 @@ defmodule Neuron.CampaignPipeline do
       :ok = Neuron.Knowledge.assert_fact(assertion, opts)
     end
 
-    {:ok,
-     %{
-       campaign: campaign,
-       round: 0,
-       searches: [],
-       urls: [],
-       children: [],
-       leads: [],
-       failures: [],
-       started_at: DateTime.utc_now()
-     }}
+    with {:ok, titles} <- role_titles(campaign.target_profile.roles, opts) do
+      {:ok,
+       %{
+         campaign: put_in(campaign, [:target_profile, :titles], titles),
+         round: 0,
+         searches: [],
+         urls: [],
+         children: [],
+         leads: [],
+         failures: [],
+         started_at: DateTime.utc_now()
+       }}
+    end
   end
 
   def stage(:retrieve, data, opts) do
-    with {:ok, candidates, withheld} <- Neuron.Selection.candidates(data.campaign, opts),
+    with {:ok, candidates, selection} <- Neuron.Selection.candidates(data.campaign, opts),
          {:ok, leads} <-
            Neuron.Selection.reserve(data.campaign.campaign_id, opts[:run_id], candidates) do
       # Every campaign makes a search pass, including when existing knowledge matches.
-      {:ok, Map.merge(data, %{leads: leads, withheld_contact: withheld})}
+      {:ok, record_selection(data, leads, selection)}
     end
   end
 
@@ -183,10 +185,10 @@ defmodule Neuron.CampaignPipeline do
   end
 
   def stage(:rank, data, opts) do
-    with {:ok, candidates, withheld} <- Neuron.Selection.candidates(data.campaign, opts),
+    with {:ok, candidates, selection} <- Neuron.Selection.candidates(data.campaign, opts),
          {:ok, leads} <-
            Neuron.Selection.reserve(data.campaign.campaign_id, opts[:run_id], candidates) do
-      data = Map.merge(data, %{leads: leads, withheld_contact: withheld})
+      data = record_selection(data, leads, selection)
 
       cond do
         length(leads) >= data.campaign.lead_count ->
@@ -245,7 +247,8 @@ defmodule Neuron.CampaignPipeline do
       campaign: data.campaign,
       summary: data.summary,
       stop_reason: data.stop_reason,
-      failures: data.failures
+      failures: data.failures,
+      selection: data[:selection]
     }
 
     with {:ok, _} <- Neuron.Schemas.validate_campaign_result(result),
@@ -304,6 +307,46 @@ defmodule Neuron.CampaignPipeline do
       opts
     )
   end
+
+  # The latest pass's accounting, kept on the run so a host can tell a run
+  # that considered nobody from one that rejected everybody, and by which
+  # check, including a run cancelled before `:finish`.
+  defp record_selection(data, leads, selection) do
+    Map.merge(data, %{
+      leads: leads,
+      withheld_contact: selection.withheld_contact,
+      selection: selection
+    })
+  end
+
+  # Campaign roles are usually categories ("technology leaders"), and a
+  # person's title never contains a category. One model call per run turns
+  # them into the concrete titles a team page would print.
+  defp role_titles([], _opts), do: {:ok, []}
+
+  defp role_titles(roles, opts) do
+    Neuron.Structured.generate(
+      "campaign_titles.eex",
+      %{roles: Enum.join(roles, "\n")},
+      &validate_titles/1,
+      opts
+    )
+  end
+
+  defp validate_titles(%{"titles" => titles}) when is_list(titles) do
+    if Enum.all?(titles, &is_binary/1) do
+      {:ok,
+       titles
+       |> Enum.map(&String.trim/1)
+       |> Enum.reject(&(&1 == ""))
+       |> Enum.uniq()
+       |> Enum.take(25)}
+    else
+      {:error, :titles_must_be_strings}
+    end
+  end
+
+  defp validate_titles(_), do: {:error, :expected_titles}
 
   defp exhausted?(data, opts) do
     data.round >= Keyword.get(opts, :max_rounds, 12) or
