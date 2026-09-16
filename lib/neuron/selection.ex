@@ -72,6 +72,23 @@ defmodule Neuron.Selection do
     results = Enum.map(records, &evaluate(&1, campaign, vector, opts))
     rejections = for {:rejected, checks} <- results, do: checks
 
+    # Counts say a check failed; this says for whom, so a host can tell a
+    # correct rejection from a matching bug without reading the graph.
+    rejected_people =
+      for {record, {:rejected, checks}} <- Enum.zip(records, results) do
+        facts =
+          Neuron.Knowledge.resolve(record["assertions"] || [])
+          |> Map.new(fn {key, claim} -> {key, claim["claim_value"]} end)
+
+        %{
+          person_id: record["external_id"],
+          name: facts["name"],
+          title: facts["title"],
+          employer: facts["employer"],
+          checks: checks
+        }
+      end
+
     ranked =
       for({:lead, lead} <- results, do: lead)
       |> Enum.sort_by(&{-&1.contact_priority, -&1.fit_score, &1.person_id})
@@ -82,6 +99,7 @@ defmodule Neuron.Selection do
        ranked: length(ranked),
        withheld_contact: Enum.count(results, &(&1 == :no_contact_channel)),
        rejected: length(rejections),
+       rejected_people: rejected_people,
        # Candidates a gate let through because their organization did not
        # say: no observed size, or no industry or description.
        unknown_by:
