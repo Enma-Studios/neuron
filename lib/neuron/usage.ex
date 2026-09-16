@@ -97,6 +97,13 @@ defmodule Neuron.Usage do
 
       :ok
     else
+      # Spend with no run cannot be attributed, but it happened: say so.
+      Neuron.Telemetry.emit([:usage, :dropped], %{
+        reason: :no_run_id,
+        kind: attrs[:kind],
+        stage: opts[:stage]
+      })
+
       :ok
     end
   rescue

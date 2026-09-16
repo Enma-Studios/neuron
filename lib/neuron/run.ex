@@ -35,7 +35,15 @@ defmodule Neuron.RunWorker do
 
     if machine.version == version do
       data = Neuron.FSM.data(machine)
-      context = %{run_id: id, options: data.opts, plan: data[:plan]}
+      # Planning spends too (campaign intake fetches and reads the seller
+      # page), and usage is recorded against the options a call is given. A
+      # run that stopped at needs_input used to show no spend at all.
+      options =
+        data.opts
+        |> Keyword.put(:run_id, id)
+        |> Keyword.put(:stage, String.to_existing_atom(machine.state))
+
+      context = %{run_id: id, options: options, plan: data[:plan]}
 
       result =
         case machine.state do
