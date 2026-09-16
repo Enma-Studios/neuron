@@ -110,9 +110,8 @@ defmodule Neuron.Browser.BrowserUse do
   # sum, and one hung session held a campaign's `collect` for twenty minutes.
   # The task is killed rather than asked to stop: `Neuron.Browser.Sessions`
   # stops the remote browser of an owner that dies for any reason.
-  # ponytail: a kill between the provider creating a browser and `track/1`
-  # registering it leaves that browser to `sweep/1`; register before create
-  # if that window shows up in practice.
+  # A kill between the provider creating a browser and `track/1`
+  # registering it leaves that browser to `sweep/1`. #41.
   defp fetch_within_deadline(url, opts) do
     task = Task.async(fn -> fetch_with_open_session(url, opts) end)
 

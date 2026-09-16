@@ -110,8 +110,8 @@ defmodule Neuron.StageWorker do
   # every one: one child's normalize took five attempts and 22 minutes to
   # fail. Stages that call a model get one more try for a transient
   # provider error; everything else gets two.
-  # ponytail: keyed by stage name across every profile; move to a profile
-  # callback if two profiles ever give one name different work.
+  # Keyed by stage name across every profile, so a name reused for
+  # different work gets the other stage's limit. #77.
   @model_stages ~w(prepare plan_search search draft normalize extract enrich)a
 
   @doc "How many attempts `stage` gets before its run fails."

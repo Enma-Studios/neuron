@@ -253,8 +253,7 @@ defmodule Neuron.Campaign do
        |> Map.put(:source_url, url)
        # The page's Markdown travels with the campaign so a host that never
        # reads Dgraph still has what the excerpts point into.
-       # ponytail: the whole page is re-serialized at each stage checkpoint;
-       # store it once against the run if a seller page ever gets large.
+       # The whole page is re-serialized at every stage checkpoint. #78.
        |> Map.put(:source_markdown, snapshot.markdown)
        |> Map.put(:field_sources, field_sources(parsed["sources"], snapshot.markdown, url))}
     end
