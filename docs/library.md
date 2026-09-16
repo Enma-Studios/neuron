@@ -84,6 +84,22 @@ Campaigns search for external prospects, ingest documents into the shared graph,
 
 Before rank, every company the campaign has read a page from gets a people-page step. The pages it has already fetched are judged by what they yielded: a page that named at least one person is that company's people page. A company without one is probed one page per pass, first the people pages it links itself (team, about, leadership, people, management and similar paths on its own domain), then the common paths on its host (`/team`, `/about`, `/about-us`, `/leadership`, `/company/leadership`, `/people`, `/our-team`, and variants). A path that answers and names nobody is not a hit. Each company gets at most `people_page_attempts` probes (default 3), probes count toward `max_pages`, and the run's time budget still governs. Pass `companies: ["example.com", ...]` to probe companies found elsewhere as well. `result.people_pages` maps each company domain to `%{found, probes, tried, links}`.
 
+#### Company-list campaigns
+
+A host that has its own company list skips discovery. Send `companies` with the other intake answers, or on an approved campaign: a list of domains or URLs, kept as `campaign.companies` in order, once each, as registrable domains (`"https://www.example.com/"` is `"example.com"`). An entry that is not a domain returns `{:error, {:invalid_company, entry}}`.
+
+```elixir
+Neuron.Campaign.intake(%{
+  url: "https://nyx-labs.org/",
+  target_roles: "CTOs and VPs of Engineering",
+  target_organizations: "Software product companies",
+  companies: ["softwaremill.com", "https://lumenglobal.io/"],
+  lead_count: 10
+})
+```
+
+With a company list the run never plans or runs a search: `plan_search` goes straight to the people-page step, which starts each company at its home page and then probes as above, through the usual fetch and extraction. Rank runs once when every company has a people page or has used its `people_page_attempts`, and the run finishes with `stop_reason: :companies_exhausted` unless it met `lead_count` first. People already in the graph still reach rank. The home page counts as one of a company's probes.
+
 A role a page names with no person, such as "VP of Engineering" under a portrait, is a company role signal, never a candidate: it is not ingested as a person, is never counted in `selection.considered`, and is recorded as `%{employer, title, source_url}` in `result.role_signals` and on each ingestion child's result. Nameless people already in the graph from earlier runs are listed in `selection.role_signals` instead of being considered.
 
 Harvested URLs that are articles rather than pages a company publishes about itself are dropped before ingestion, decided from the URL alone with no reliance on the harvest prompt: publishing platforms (medium.com, substack.com and similar), `blog.` hosts, non-HTML files such as `llms.txt`, blog, post, article, insight, news, author, tag and pulse paths, dated paths, listicle slugs (`top-25-...`, `...-of-2025`), and slugs of five or more words. Each is recorded in `rejected_sources` as `%{url, reason}`.

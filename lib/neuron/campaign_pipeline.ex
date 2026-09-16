@@ -46,6 +46,12 @@ defmodule Neuron.CampaignPipeline do
     end
   end
 
+  # A host that supplies its own company list has done discovery: the run
+  # goes straight to each company's people page, then rank, and never
+  # searches.
+  def stage(:plan_search, %{campaign: %{companies: [_ | _]}} = data, _opts),
+    do: {:goto, :people_pages, %{data | round: data.round + 1}}
+
   def stage(:plan_search, data, opts) do
     if exhausted?(data, opts) do
       {:goto, :draft, Map.put(data, :stop_reason, :budget_exhausted)}
@@ -226,7 +232,8 @@ defmodule Neuron.CampaignPipeline do
       )
 
     companies =
-      (Enum.map(data.urls, &Neuron.Knowledge.registrable_domain/1) ++
+      (Map.get(data.campaign, :companies, []) ++
+         Enum.map(data.urls, &Neuron.Knowledge.registrable_domain/1) ++
          List.wrap(opts[:companies]))
       |> Enum.uniq()
       |> Enum.filter(
@@ -254,11 +261,8 @@ defmodule Neuron.CampaignPipeline do
         {:ok, data}
 
       urls ->
-        {:goto, :dispatch,
-         %{
-           data
-           | pending_children: Enum.map(urls, &%{id: Ecto.UUID.generate(), source: %{url: &1}})
-         }}
+        children = Enum.map(urls, &%{id: Ecto.UUID.generate(), source: %{url: &1}})
+        {:goto, :dispatch, Map.put(data, :pending_children, children)}
     end
   end
 
@@ -271,6 +275,9 @@ defmodule Neuron.CampaignPipeline do
       cond do
         length(leads) >= data.campaign.lead_count ->
           {:goto, :draft, Map.put(data, :stop_reason, :target_met)}
+
+        Map.get(data.campaign, :companies, []) != [] ->
+          {:goto, :draft, Map.put(data, :stop_reason, :companies_exhausted)}
 
         exhausted?(data, opts) ->
           {:goto, :draft, Map.put(data, :stop_reason, :budget_exhausted)}

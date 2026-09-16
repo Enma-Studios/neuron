@@ -71,7 +71,8 @@ defmodule Neuron.PeoplePages do
   @doc """
   The next page to probe for each company that has no people page yet and
   probes left: its own people links first, then the common paths on its
-  host, skipping anything tried or already fetched. Returns `{state, urls}`.
+  host, skipping anything tried or already fetched. A company with nothing
+  read yet starts at its home page. Returns `{state, urls}`.
   """
   def next(state, companies, opts \\ []) do
     attempts = Keyword.get(opts, :attempts, 3)
@@ -86,9 +87,13 @@ defmodule Neuron.PeoplePages do
           [] -> company
         end
 
+      # A company nothing has been read from yet starts at its home page,
+      # which names its people or links the page that does.
+      home = if entry.tried == [], do: ["https://#{host}"], else: []
+
       candidate =
         Enum.find(
-          entry.links ++ Enum.map(@paths, &"https://#{host}#{&1}"),
+          home ++ entry.links ++ Enum.map(@paths, &"https://#{host}#{&1}"),
           &(&1 not in entry.tried and not MapSet.member?(fetched, &1))
         )
 
