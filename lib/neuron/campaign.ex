@@ -355,7 +355,7 @@ defmodule Neuron.Campaign do
           markets: List.wrap(values[:target_organizations] || profile[:target_organizations]),
           roles: List.wrap(values[:target_roles] || profile_value(profile, "target_role")),
           geography: List.wrap(values[:geography]),
-          exclusions: List.wrap(values[:exclusions])
+          exclusions: exclusion_terms(values[:exclusions])
         }
 
         with {:ok, seller} <- Neuron.Contracts.validate(Neuron.Contracts.Seller, seller),
@@ -410,10 +410,27 @@ defmodule Neuron.Campaign do
             ),
         target_organizations: List.wrap(values[:target_organizations]),
         preferred_geographies: List.wrap(values[:geography] || values[:preferred_geographies]),
-        exclusions: List.wrap(values[:exclusions]),
+        exclusions: exclusion_terms(values[:exclusions]),
         offer: values[:offer],
         threshold: values[:threshold] || 0.0
       }
+  end
+
+  # Exclusions are matched as substrings, so a sentence never matches
+  # anything. Split deterministically into one term per clause: "Not
+  # agencies, not security vendors." is ["agencies", "security vendors"].
+  defp exclusion_terms(value) do
+    value
+    |> List.wrap()
+    |> Enum.flat_map(&String.split(to_string(&1), [",", ";"]))
+    |> Enum.map(fn clause ->
+      clause
+      |> String.trim()
+      |> String.replace(~r/^(not|no)\s+/i, "")
+      |> String.replace(~r/[.!]+$/, "")
+      |> String.trim()
+    end)
+    |> Enum.reject(&(&1 == ""))
   end
 
   defp profile_value(profile, category) when is_map(profile) do
