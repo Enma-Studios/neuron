@@ -4,9 +4,10 @@ defmodule Neuron.Search do
   # Every engine here must return public results to a signed-out cloud
   # browser. Google, LinkedIn, X and Reddit do not, so they ship switched
   # off; see `docs/configuration.md`.
+  # Yandex consent-walls cloud browsers on every query; it is supported but
+  # off until those walls are handled.
   @default_engines [
     Neuron.Search.DuckDuckGo,
-    Neuron.Search.Yandex,
     Neuron.Search.Brave
   ]
 

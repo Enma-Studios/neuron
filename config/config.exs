@@ -34,9 +34,10 @@ config :neuron,
   search: [
     # Brave is listed but runs only when BRAVE_SEARCH_API_KEY is set; without
     # a key it is absent from the round rather than failing in it.
+    # Yandex is supported but off: it consent-walls cloud browsers on every
+    # query. Enable it explicitly once those walls are handled.
     engines: [
       Neuron.Search.DuckDuckGo,
-      Neuron.Search.Yandex,
       Neuron.Search.Brave
     ],
     brave: [api_key: System.get_env("BRAVE_SEARCH_API_KEY")]
