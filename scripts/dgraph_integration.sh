@@ -33,4 +33,4 @@ fi
 NEURON_DGRAPH_ENABLED=true \
 NEURON_DGRAPH_ENDPOINT="localhost:${NEURON_DGRAPH_GRPC_PORT:-19080}" \
 NEURON_DGRAPH_TRANSPORT=grpc \
-  mix test --include integration test/neuron_dgraph_integration_test.exs test/neuron_campaign_pipeline_integration_test.exs test/neuron_intake_excerpt_test.exs test/neuron_intake_answers_test.exs
+  mix test --include integration test/neuron_dgraph_integration_test.exs test/neuron_campaign_pipeline_integration_test.exs test/neuron_intake_excerpt_test.exs test/neuron_intake_answers_test.exs test/neuron_leadership_people_test.exs
