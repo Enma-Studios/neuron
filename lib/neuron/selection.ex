@@ -18,7 +18,8 @@ defmodule Neuron.Selection do
   @personal ~w(gmail.com yahoo.com outlook.com hotmail.com proton.me protonmail.com icloud.com)
   @generic ~w(info hello contact sales support office admin enquiries inquiries team careers press)
 
-  @checks ~w(name employer seller role geography exclusion threshold)a
+  @checks ~w(name employer seller role geography exclusion size industry threshold)a
+  @gates ~w(size industry)a
 
   def enrichment_candidates(campaign, opts) do
     query = query_terms(campaign.target_profile)
@@ -40,13 +41,13 @@ defmodule Neuron.Selection do
            ),
          {:ok, lexical} <-
            Neuron.Graph.query(
-             "query candidates($q: string, $space: string) { results(func: anyoftext(knowledge_text, $q), first: 200) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } employer { name description industry } } }",
+             "query candidates($q: string, $space: string) { results(func: anyoftext(knowledge_text, $q), first: 200) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } employer { name description industry knowledge_json } } }",
              %{"$q" => query, "$space" => Neuron.Embedding.space()},
              opts
            ),
          {:ok, semantic} <-
            Neuron.Graph.query(
-             "query candidates($v: float32vector, $space: string) { results(func: similar_to(#{Neuron.Embedding.field()}, 200, $v)) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } employer { name description industry } } }",
+             "query candidates($v: float32vector, $space: string) { results(func: similar_to(#{Neuron.Embedding.field()}, 200, $v)) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } employer { name description industry knowledge_json } } }",
              %{"$v" => vector, "$space" => Neuron.Embedding.space()},
              opts
            ) do
@@ -81,6 +82,12 @@ defmodule Neuron.Selection do
        ranked: length(ranked),
        withheld_contact: Enum.count(results, &(&1 == :no_contact_channel)),
        rejected: length(rejections),
+       # Candidates a gate let through because their organization did not
+       # say: no observed size, or no industry or description.
+       unknown_by:
+         Map.new(@gates, fn gate ->
+           {gate, Enum.count(records, &(gate(gate, &1, campaign.target_profile) == :unknown))}
+         end),
        rejected_by:
          Map.new(@checks, fn check -> {check, Enum.count(rejections, &(check in &1))} end)
      }}
@@ -144,7 +151,9 @@ defmodule Neuron.Selection do
         seller: employer != "" and employer == campaign.seller_profile.domain,
         role: role == 0,
         geography: geography == 0,
-        exclusion: Enum.any?(target.exclusions, &contains?(exclusion_text(record, text), &1))
+        exclusion: Enum.any?(target.exclusions, &contains?(exclusion_text(record, text), &1)),
+        size: gate(:size, record, target) == :fail,
+        industry: gate(:industry, record, target) == :fail
       ]
       |> Enum.filter(&elem(&1, 1))
       |> Keyword.keys()
@@ -318,6 +327,62 @@ defmodule Neuron.Selection do
     |> Enum.reject(&is_nil/1)
     |> then(&Enum.join([text | &1], " "))
   end
+
+  # Organization gates read the employer, so a campaign scoped to companies
+  # of 20 to 300 software people stops ranking travel groups and analysts.
+  # Neither is ever inferred: an organization that did not say passes, and
+  # is counted as unknown.
+  defp gate(:size, record, target) do
+    with %{} = range <- Map.get(target, :company_size),
+         [_ | _] = counts <- employee_counts(organization_facts(record)["employee_count"]) do
+      if (range[:min] && Enum.max(counts) < range[:min]) ||
+           (range[:max] && Enum.min(counts) > range[:max]),
+         do: :fail,
+         else: :pass
+    else
+      nil -> :pass
+      [] -> :unknown
+    end
+  end
+
+  defp gate(:industry, record, target) do
+    organization = organization(record)
+    facts = organization_facts(record)
+
+    text =
+      [
+        organization["industry"] || facts["industry"],
+        organization["description"] || facts["description"]
+      ]
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.join(" ")
+
+    cond do
+      Map.get(target, :industries, []) == [] -> :pass
+      text == "" -> :unknown
+      Enum.any?(target.industries, &word?(text, &1)) -> :pass
+      true -> :fail
+    end
+  end
+
+  defp organization(record), do: record["employer"] |> List.wrap() |> List.first() || %{}
+
+  defp organization_facts(record) do
+    case Jason.decode(organization(record)["knowledge_json"] || "") do
+      {:ok, %{} = facts} -> facts
+      _ -> %{}
+    end
+  end
+
+  # "120", "51-200" and "5,000+" all state a size; anything without a
+  # number does not.
+  defp employee_counts(value) when is_binary(value) do
+    for [digits] <- Regex.scan(~r/\d[\d,]*/, value),
+        {count, _} = Integer.parse(String.replace(digits, ",", "")),
+        do: count
+  end
+
+  defp employee_counts(_), do: []
 
   defp match_words([], _), do: 1.0
 
