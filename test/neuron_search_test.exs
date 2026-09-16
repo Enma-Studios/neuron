@@ -200,28 +200,27 @@ defmodule Neuron.SearchTest do
   end
 
   describe "the default engine set" do
-    test "is DuckDuckGo and Yandex, plus Brave only when it has a key" do
+    test "is DuckDuckGo, plus Brave only when it has a key" do
       # The application default and the compiled fallback must agree, or the
       # engine set depends on whether config was loaded.
       configured = Application.get_env(:neuron, :search, [])[:engines]
 
-      assert configured == [
-               Neuron.Search.DuckDuckGo,
-               Neuron.Search.Yandex,
-               Neuron.Search.Brave
-             ]
+      assert configured == [Neuron.Search.DuckDuckGo, Neuron.Search.Brave]
 
       # Brave is listed but unavailable without a key, so what actually runs
-      # is the two browser engines until one is supplied.
+      # is DuckDuckGo until one is supplied.
       refute Neuron.Search.Brave.available?()
-      assert Neuron.Search.engines() == [Neuron.Search.DuckDuckGo, Neuron.Search.Yandex]
+      assert Neuron.Search.engines() == [Neuron.Search.DuckDuckGo]
     end
 
     test "never contains a walled or logged-in engine" do
       # An edit that puts one of these back must fail here rather than in a
       # billed run: LinkedIn and X need a logged-in profile, Reddit redirects
-      # cloud addresses to a login wall, and Google bot-checks every query.
+      # cloud addresses to a login wall, Google bot-checks every query, and
+      # Yandex consent-walled every query in runs f9f778f2, 92406981 and
+      # 92450aed.
       for engine <- [
+            Neuron.Search.Yandex,
             Neuron.Search.LinkedIn,
             Neuron.Search.X,
             Neuron.Search.Reddit,
@@ -234,6 +233,7 @@ defmodule Neuron.SearchTest do
 
     test "an engine switched off by default is still supported when asked for" do
       assert Neuron.Search.engines(engines: [Neuron.Search.Google]) == [Neuron.Search.Google]
+      assert Neuron.Search.engines(engines: [Neuron.Search.Yandex]) == [Neuron.Search.Yandex]
     end
   end
 
