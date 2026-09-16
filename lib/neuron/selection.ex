@@ -77,6 +77,21 @@ defmodule Neuron.Selection do
   from "companies matched, no contact channel".
   """
   def select(records, campaign, vector, opts \\ []) do
+    # A role with no name could not become a lead under any campaign, so it
+    # is never considered: it is a company role signal (#84).
+    {records, nameless} = Enum.split_with(records, &(facts(&1)["name"] not in [nil, ""]))
+
+    role_signals =
+      for record <- nameless,
+          title = claim(record, "title"),
+          title != nil do
+        %{
+          employer: facts(record)["employer"],
+          title: title["claim_value"],
+          source_url: title["url"]
+        }
+      end
+
     results = Enum.map(records, &evaluate(&1, campaign, vector, opts))
     rejections = for {:rejected, checks} <- results, do: checks
 
@@ -109,6 +124,7 @@ defmodule Neuron.Selection do
        withheld_contact: Enum.count(results, &(&1 == :no_contact_channel)),
        rejected: length(rejections),
        rejected_people: rejected_people,
+       role_signals: role_signals,
        # Industry is weighed, not gated: a term list cannot name every
        # industry a buyer is in (#81). Counted over everyone considered.
        industry_by:
@@ -427,6 +443,14 @@ defmodule Neuron.Selection do
   end
 
   defp employee_counts(_), do: []
+
+  defp facts(record) do
+    Neuron.Knowledge.resolve(record["assertions"] || [])
+    |> Map.new(fn {key, claim} -> {key, claim["claim_value"]} end)
+  end
+
+  defp claim(record, predicate),
+    do: Map.get(Neuron.Knowledge.resolve(record["assertions"] || []), predicate)
 
   defp match_words([], _), do: 1.0
 
