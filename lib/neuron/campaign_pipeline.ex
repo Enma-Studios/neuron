@@ -79,10 +79,20 @@ defmodule Neuron.CampaignPipeline do
 
     case Neuron.Search.orchestrate(data.pending_searches, search_opts) do
       {:ok, found, failures} ->
-        sources =
+        {articles, found} =
           found
           |> Enum.uniq_by(& &1.url)
           |> Enum.filter(&Neuron.ContactPolicy.prospect_source?(&1.url))
+          |> Enum.split_with(&Neuron.Search.Harvest.article_reason(&1.url))
+
+        rejected =
+          Enum.map(
+            articles,
+            &%{url: &1.url, reason: Neuron.Search.Harvest.article_reason(&1.url)}
+          )
+
+        sources =
+          found
           |> Enum.reject(
             &(Neuron.Knowledge.domain(&1.url) == data.campaign.seller_profile.domain or
                 &1.url in data.urls)
@@ -98,6 +108,8 @@ defmodule Neuron.CampaignPipeline do
         {:ok,
          Map.merge(data, %{
            pending_children: sources,
+           rejected_sources:
+             Enum.uniq_by(Map.get(data, :rejected_sources, []) ++ rejected, & &1.url),
            searches: data.searches ++ data.pending_searches,
            failures: data.failures ++ Enum.map(failures, &search_failure/1)
          })}
@@ -248,7 +260,8 @@ defmodule Neuron.CampaignPipeline do
       summary: data.summary,
       stop_reason: data.stop_reason,
       failures: data.failures,
-      selection: data[:selection]
+      selection: data[:selection],
+      rejected_sources: Map.get(data, :rejected_sources, [])
     }
 
     with {:ok, _} <- Neuron.Schemas.validate_campaign_result(result),

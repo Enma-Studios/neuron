@@ -10,6 +10,52 @@ defmodule Neuron.Search.Harvest do
 
   @max_link_lines 200
 
+  @publishing_hosts ~w(medium.com substack.com dev.to hashnode.dev blogspot.com wordpress.com tumblr.com)
+  @article_segments ~w(blog blogs post posts p article articles insights news stories author authors tag tags category pulse)
+  @not_html ~w(.txt .xml .json .pdf .md .csv .rss)
+
+  @doc """
+  Why `url` is an article rather than a page a company publishes about
+  itself, or `nil`. Decided from the URL alone, so it holds whatever the
+  harvest model selected: the prompt asks it to skip articles and listicles,
+  and it did not.
+  """
+  def article_reason(url) when is_binary(url) do
+    uri = URI.parse(url)
+    host = (uri.host || "") |> String.downcase() |> String.trim_leading("www.")
+    path = String.downcase(uri.path || "")
+    segments = String.split(path, "/", trim: true)
+    slug = List.last(segments) || ""
+
+    cond do
+      Enum.any?(@publishing_hosts, &(host == &1 or String.ends_with?(host, "." <> &1))) ->
+        :publishing_platform
+
+      String.starts_with?(host, "blog.") ->
+        :blog_host
+
+      Path.extname(path) in @not_html ->
+        :not_html
+
+      Enum.any?(segments, &(&1 in @article_segments)) ->
+        :article_path
+
+      Regex.match?(~r"/(19|20)\d{2}[/-]\d{2}", path) ->
+        :dated_path
+
+      Regex.match?(~r/(^|-)(top|best)-\d+-|-of-(19|20)\d{2}$/, slug) ->
+        :listicle
+
+      # A title as a slug: "selling-my-bootstrapped-saas-business". Company
+      # pages are a word or three: "leadership", "about-us/team".
+      length(String.split(slug, "-")) >= 5 ->
+        :long_slug
+
+      true ->
+        nil
+    end
+  end
+
   @doc """
   Harvest every transcript concurrently. Returns `{results, failures}`:
   results are engine/result-list pairs ready for merge, failures are
