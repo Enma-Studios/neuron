@@ -95,10 +95,14 @@ defmodule Neuron.Search.Harvest do
 
   @doc "Read one transcript with the model and validate the selection."
   def harvest(transcript, opts) do
+    # A page runner that returns no Markdown is read from its text. Reading
+    # the key strictly raised inside the pipeline, the search stage retried,
+    # and the campaign never left :search.
     content =
-      if transcript.markdown == "",
-        do: transcript.text,
-        else: transcript.markdown
+      case Map.get(transcript, :markdown, "") do
+        "" -> transcript.text
+        markdown -> markdown
+      end
 
     assigns = %{
       engine: engine_label(transcript.engine),
