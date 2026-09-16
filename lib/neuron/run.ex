@@ -91,6 +91,10 @@ defmodule Neuron.StageWorker do
   @moduledoc "Executes one checkpointed pipeline stage per Oban job."
   use Oban.Worker, queue: :agents, max_attempts: 5
 
+  # The backstop behind each stage's own bounds: without it Oban lets a stuck
+  # attempt run forever, and the stage is never retried or failed.
+  def timeout(_job), do: Application.get_env(:neuron, :stage_timeout, :timer.minutes(15))
+
   def perform(%Oban.Job{args: %{"machine_id" => id, "version" => version}} = job) do
     machine = Neuron.FSM.get(id)
 
@@ -107,10 +111,24 @@ defmodule Neuron.StageWorker do
         |> Keyword.put(:stage, stage)
         |> Keyword.put(:transition_version, machine.version)
 
+      run_stage = fn -> data.profile.stage(stage, data.stage_data, opts) end
+
+      # A job Oban has snoozed is a stage polling, not starting: counted as a
+      # stage start, one hung child turned `collect` into hundreds of them.
       result =
-        Neuron.Telemetry.span([:pipeline, :stage], %{run_id: id, stage: stage}, fn ->
-          data.profile.stage(stage, data.stage_data, opts)
-        end)
+        case job.meta["snoozed"] do
+          snoozed when is_integer(snoozed) and snoozed > 0 ->
+            Neuron.Telemetry.emit([:pipeline, :stage, :wait], %{
+              run_id: id,
+              stage: stage,
+              snoozed: snoozed
+            })
+
+            run_stage.()
+
+          _ ->
+            Neuron.Telemetry.span([:pipeline, :stage], %{run_id: id, stage: stage}, run_stage)
+        end
 
       case result do
         {:ok, output} ->

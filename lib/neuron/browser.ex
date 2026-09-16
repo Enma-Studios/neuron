@@ -44,7 +44,7 @@ end
 defmodule Neuron.Browser.BrowserUse do
   @behaviour Neuron.Browser
 
-  @defaults [session_ttl_seconds: 3600]
+  @defaults [session_ttl_seconds: 3600, fetch_timeout: 90_000]
 
   @doc """
   Browser Use settings, merged over Neuron's own defaults.
@@ -100,7 +100,27 @@ defmodule Neuron.Browser.BrowserUse do
 
   @impl true
   def fetch(url, opts) do
-    if configured?(), do: fetch_with_open_session(url, opts), else: not_configured(opts)
+    if configured?(), do: fetch_within_deadline(url, opts), else: not_configured(opts)
+  end
+
+  @doc "The whole-fetch budget: the caller's `fetch_timeout:`, then the configured one."
+  def fetch_timeout(opts), do: Keyword.get(opts, :fetch_timeout, config()[:fetch_timeout])
+
+  # Every step inside a fetch has its own timeout, but nothing bounded their
+  # sum, and one hung session held a campaign's `collect` for twenty minutes.
+  # The task is killed rather than asked to stop: `Neuron.Browser.Sessions`
+  # stops the remote browser of an owner that dies for any reason.
+  # ponytail: a kill between the provider creating a browser and `track/1`
+  # registering it leaves that browser to `sweep/1`; register before create
+  # if that window shows up in practice.
+  defp fetch_within_deadline(url, opts) do
+    task = Task.async(fn -> fetch_with_open_session(url, opts) end)
+
+    case Task.yield(task, fetch_timeout(opts)) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      {:exit, reason} -> {:error, {:browser_use_error, "exit: #{inspect(reason)}"}}
+      nil -> {:error, :browser_use_timeout}
+    end
   end
 
   @doc """
