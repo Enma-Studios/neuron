@@ -19,6 +19,33 @@ defmodule Neuron.OrganizationGatesTest do
     assert campaign.target_profile.industries == ["software", "SaaS"]
   end
 
+  test "a string size bound is rejected at intake, naming the field and value" do
+    # An integer always sorts below a string, so "20" would have rejected
+    # every organization that states a size (#73).
+    base = %{
+      organization: "Nyx Labs",
+      domain: "nyx-labs.org",
+      field: "Security",
+      offer: "Assessments",
+      target_roles: "CTO",
+      target_organizations: "Software product companies",
+      lead_count: 1
+    }
+
+    assert {:error, {:invalid_company_size, :min, "20"}} =
+             Neuron.Campaign.normalize_campaign(
+               Map.put(base, :company_size, %{min: "20", max: 300})
+             )
+
+    assert {:error, {:invalid_company_size, :max, "300"}} =
+             Neuron.Campaign.normalize_campaign(
+               Map.put(base, :company_size, %{"min" => 20, "max" => "300"})
+             )
+
+    assert {:ok, %{target_profile: %{company_size: %{min: 20, max: nil}}}} =
+             Neuron.Campaign.normalize_campaign(Map.put(base, :company_size, %{min: 20}))
+  end
+
   test "an organization may state its employee count" do
     document = %{url: "https://acme.example/about", markdown: "Acme has 120 employees."}
 
