@@ -145,7 +145,7 @@ defmodule Neuron do
   def resume_run(id) do
     data = id |> reconcile() |> FSM.data()
     event = if Map.has_key?(data, :stage_index), do: :retry_pipeline, else: :retry
-    FSM.send(id, event, %{error: nil})
+    FSM.send(id, event, %{error: nil, exhausted: nil})
   end
 
   def spawn_agent(run_id, role, worker \\ Neuron.Agent.Echo, input, opts \\ []) do
