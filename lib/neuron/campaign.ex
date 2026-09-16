@@ -361,6 +361,7 @@ defmodule Neuron.Campaign do
         }
 
         with {:ok, company_size} <- company_size(values[:company_size]),
+             {:ok, companies} <- companies(values[:companies]),
              target = Map.put(target, :company_size, company_size),
              {:ok, seller} <- Neuron.Contracts.validate(Neuron.Contracts.Seller, seller),
              {:ok, target} <- Neuron.Contracts.validate(Neuron.Contracts.Target, target),
@@ -370,12 +371,14 @@ defmodule Neuron.Campaign do
              campaign_id: campaign_id,
              lead_count: parse_count(values[:lead_count]),
              domain: domain,
+             companies: companies,
              seller_profile: Neuron.Contracts.plain(seller),
              target_profile: Neuron.Contracts.plain(target),
              fit_profile: profile
            })}
         else
           {:error, {:invalid_company_size, _bound, _value}} = error -> error
+          {:error, {:invalid_company, _value}} = error -> error
           error -> {:error, {:invalid_campaign, error}}
         end
       else
@@ -452,6 +455,26 @@ defmodule Neuron.Campaign do
 
   defp company_size(_), do: {:ok, nil}
 
+  # A host-supplied company list: each entry a domain or URL, kept as its
+  # registrable domain, in order, once. An entry that is not a domain is an
+  # error naming it rather than a company the run silently skips.
+  defp companies(nil), do: {:ok, []}
+
+  defp companies(list) when is_list(list) do
+    Enum.reduce_while(list, {:ok, []}, fn entry, {:ok, domains} ->
+      case Neuron.Knowledge.registrable_domain(entry) do
+        nil -> {:halt, {:error, {:invalid_company, entry}}}
+        domain -> {:cont, {:ok, domains ++ [domain]}}
+      end
+    end)
+    |> case do
+      {:ok, domains} -> {:ok, Enum.uniq(domains)}
+      error -> error
+    end
+  end
+
+  defp companies(other), do: {:error, {:invalid_company, other}}
+
   defp profile_value(profile, category) when is_map(profile) do
     profile
     |> Map.get(:requirements, Map.get(profile, "requirements", []))
@@ -481,7 +504,7 @@ defmodule Neuron.Campaign do
 
   defp normalize_keys(other), do: other
 
-  @input_keys ~w(organization domain field offer name url website seller_geography target_roles target_organizations geography exclusions industries company_size lead_count campaign_id seller_profile target_profile roles markets fit_profile preferred_geographies threshold assertions action campaigns candidate_campaigns approved_campaigns campaign_approval)a
+  @input_keys ~w(organization domain field offer name url website seller_geography target_roles target_organizations geography exclusions industries company_size companies lead_count campaign_id seller_profile target_profile roles markets fit_profile preferred_geographies threshold assertions action campaigns candidate_campaigns approved_campaigns campaign_approval)a
   defp input_key(key) when is_binary(key),
     do: Enum.find(@input_keys, key, &(Atom.to_string(&1) == key))
 

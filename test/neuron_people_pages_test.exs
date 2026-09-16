@@ -245,7 +245,8 @@ defmodule Neuron.PeoplePagesTest do
                people_page_attempts: 3
              )
 
-    assert urls_of(next) == ["https://softwaremill.com/team"]
+    # Nothing has been read from it yet, so it starts at its home page.
+    assert urls_of(next) == ["https://softwaremill.com"]
   end
 
   defmodule Model do
