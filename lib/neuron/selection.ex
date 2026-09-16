@@ -14,12 +14,20 @@ defmodule Neuron.Selection do
   @moduledoc "Evidence-qualified hybrid matching and campaign-scoped delivery reservations."
   import Ecto.Query
   alias Neuron.Selection.Reservation
-  @weights %{market: 0.35, role: 0.20, geography: 0.15, evidence: 0.15, freshness: 0.15}
+
+  @weights %{
+    market: 0.25,
+    industry: 0.10,
+    role: 0.20,
+    geography: 0.15,
+    evidence: 0.15,
+    freshness: 0.15
+  }
   @personal ~w(gmail.com yahoo.com outlook.com hotmail.com proton.me protonmail.com icloud.com)
   @generic ~w(info hello contact sales support office admin enquiries inquiries team careers press)
 
-  @checks ~w(name employer seller role geography exclusion size industry threshold)a
-  @gates ~w(size industry)a
+  @checks ~w(name employer seller role geography exclusion size threshold)a
+  @gates ~w(size)a
 
   def enrichment_candidates(campaign, opts) do
     query = query_terms(campaign.target_profile)
@@ -85,6 +93,7 @@ defmodule Neuron.Selection do
           name: facts["name"],
           title: facts["title"],
           employer: facts["employer"],
+          industry_match: industry_match(record, campaign.target_profile),
           checks: checks
         }
       end
@@ -100,6 +109,12 @@ defmodule Neuron.Selection do
        withheld_contact: Enum.count(results, &(&1 == :no_contact_channel)),
        rejected: length(rejections),
        rejected_people: rejected_people,
+       # Industry is weighed, not gated: a term list cannot name every
+       # industry a buyer is in (#81). Counted over everyone considered.
+       industry_by:
+         Map.new([:match, :mismatch, :unknown], fn match ->
+           {match, Enum.count(records, &(industry_match(&1, campaign.target_profile) == match))}
+         end),
        # Candidates a gate let through because their organization did not
        # say: no observed size, or no industry or description.
        unknown_by:
@@ -170,8 +185,7 @@ defmodule Neuron.Selection do
         role: role == 0,
         geography: geography == 0,
         exclusion: Enum.any?(target.exclusions, &contains?(exclusion_text(record, text), &1)),
-        size: gate(:size, record, target) == :fail,
-        industry: gate(:industry, record, target) == :fail
+        size: gate(:size, record, target) == :fail
       ]
       |> Enum.filter(&elem(&1, 1))
       |> Keyword.keys()
@@ -194,8 +208,16 @@ defmodule Neuron.Selection do
           |> Enum.reject(&is_nil/1)
           |> Enum.max(fn -> nil end)
 
+        industry = industry_match(record, target)
+
         components = %{
           market: market,
+          industry:
+            case industry do
+              :mismatch -> 0.0
+              :unknown -> 0.5
+              _ -> 1.0
+            end,
           role: role,
           geography: geography,
           evidence:
@@ -235,6 +257,7 @@ defmodule Neuron.Selection do
             organization: employer,
             location: location,
             fit_score: score,
+            industry_match: industry,
             score_breakdown: components,
             semantic_similarity: cosine,
             evidence: Map.values(claims),
@@ -363,7 +386,10 @@ defmodule Neuron.Selection do
     end
   end
 
-  defp gate(:industry, record, target) do
+  # Whether the employer's industry or description holds a campaign industry
+  # term as whole words: `:match`, `:mismatch`, `:unknown` when it states
+  # neither, or `nil` when the campaign names no industries.
+  defp industry_match(record, target) do
     organization = organization(record)
     facts = organization_facts(record)
 
@@ -376,10 +402,10 @@ defmodule Neuron.Selection do
       |> Enum.join(" ")
 
     cond do
-      Map.get(target, :industries, []) == [] -> :pass
+      Map.get(target, :industries, []) == [] -> nil
       text == "" -> :unknown
-      Enum.any?(target.industries, &word?(text, &1)) -> :pass
-      true -> :fail
+      Enum.any?(target.industries, &word?(text, &1)) -> :match
+      true -> :mismatch
     end
   end
 
