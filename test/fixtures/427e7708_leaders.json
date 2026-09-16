@@ -2,14 +2,14 @@
   {
     "uid": "0x53c",
     "external_id": "_:person-a88547de56490f165940487868e59ed9697c66d7d370f130a80cfef78fc82625",
-    "profile_url": "https://insurify.com/insurify-leadership/gene-shkolnik/",
+    "profile_url": "https://coverwise.example/leadership/gideon-shale/",
     "assertions": [
       {
         "uid": "0x50d",
         "predicate": "employer",
-        "claim_value": "insurify.com",
-        "excerpt": "Gene ShkolnikChief Technology Officer",
-        "url": "https://insurify.com/company/leadership",
+        "claim_value": "coverwise.example",
+        "excerpt": "Gideon ShaleChief Technology Officer",
+        "url": "https://coverwise.example/company/leadership",
         "observed_at": "2026-09-16T16:43:14.946908Z",
         "authority": 1,
         "assertion_kind": "observed"
@@ -17,9 +17,9 @@
       {
         "uid": "0x511",
         "predicate": "name",
-        "claim_value": "Gene Shkolnik",
-        "excerpt": "Gene ShkolnikChief Technology Officer",
-        "url": "https://insurify.com/company/leadership",
+        "claim_value": "Gideon Shale",
+        "excerpt": "Gideon ShaleChief Technology Officer",
+        "url": "https://coverwise.example/company/leadership",
         "observed_at": "2026-09-16T16:43:14.946908Z",
         "authority": 1,
         "assertion_kind": "observed"
@@ -28,8 +28,8 @@
         "uid": "0x58e",
         "predicate": "title",
         "claim_value": "Chief Technology Officer",
-        "excerpt": "Gene ShkolnikChief Technology Officer",
-        "url": "https://insurify.com/company/leadership",
+        "excerpt": "Gideon ShaleChief Technology Officer",
+        "url": "https://coverwise.example/company/leadership",
         "observed_at": "2026-09-16T16:43:14.946908Z",
         "authority": 1,
         "assertion_kind": "observed"
@@ -37,31 +37,31 @@
       {
         "uid": "0x5b5",
         "predicate": "profile_url",
-        "claim_value": "https://insurify.com/insurify-leadership/gene-shkolnik/",
-        "excerpt": "[Gene Shkolnik's bio](/insurify-leadership/gene-shkolnik/)",
-        "url": "https://insurify.com/company/leadership",
+        "claim_value": "https://coverwise.example/leadership/gideon-shale/",
+        "excerpt": "[Gideon Shale's bio](/leadership/gideon-shale/)",
+        "url": "https://coverwise.example/company/leadership",
         "observed_at": "2026-09-16T16:43:14.946908Z",
         "authority": 1,
         "assertion_kind": "observed"
       }
     ],
     "employer": {
-      "description": "Insurify helps people manage $300 billion in coverage",
+      "description": "Coverwise helps people manage $300 billion in coverage",
       "industry": "insurance",
-      "knowledge_json": "{\"description\":\"Insurify helps people manage $300 billion in coverage\",\"industry\":\"insurance\"}"
+      "knowledge_json": "{\"description\":\"Coverwise helps people manage $300 billion in coverage\",\"industry\":\"insurance\"}"
     }
   },
   {
     "uid": "0x58f",
     "external_id": "_:person-79888da9323d0a6b39b191889aca4da6003ac38e3d9a59efaec6256fad27da64",
-    "profile_url": "https://insurify.com/insurify-leadership/konstantin-halachev/",
+    "profile_url": "https://coverwise.example/leadership/kasimir-hollen/",
     "assertions": [
       {
         "uid": "0x50f",
         "predicate": "employer",
-        "claim_value": "insurify.com",
-        "excerpt": "Konstantin HalachevVice President of Engineering and Data Science",
-        "url": "https://insurify.com/company/leadership",
+        "claim_value": "coverwise.example",
+        "excerpt": "Kasimir HollenVice President of Engineering and Data Science",
+        "url": "https://coverwise.example/company/leadership",
         "observed_at": "2026-09-16T16:43:14.946908Z",
         "authority": 1,
         "assertion_kind": "observed"
@@ -70,8 +70,8 @@
         "uid": "0x57f",
         "predicate": "title",
         "claim_value": "Vice President of Engineering and Data Science",
-        "excerpt": "Konstantin HalachevVice President of Engineering and Data Science",
-        "url": "https://insurify.com/company/leadership",
+        "excerpt": "Kasimir HollenVice President of Engineering and Data Science",
+        "url": "https://coverwise.example/company/leadership",
         "observed_at": "2026-09-16T16:43:14.946908Z",
         "authority": 1,
         "assertion_kind": "observed"
@@ -79,9 +79,9 @@
       {
         "uid": "0x5b6",
         "predicate": "name",
-        "claim_value": "Konstantin Halachev",
-        "excerpt": "Konstantin HalachevVice President of Engineering and Data Science",
-        "url": "https://insurify.com/company/leadership",
+        "claim_value": "Kasimir Hollen",
+        "excerpt": "Kasimir HollenVice President of Engineering and Data Science",
+        "url": "https://coverwise.example/company/leadership",
         "observed_at": "2026-09-16T16:43:14.946908Z",
         "authority": 1,
         "assertion_kind": "observed"
@@ -89,18 +89,18 @@
       {
         "uid": "0x5ca",
         "predicate": "profile_url",
-        "claim_value": "https://insurify.com/insurify-leadership/konstantin-halachev/",
-        "excerpt": "[Konstantin Halachev's bio](/insurify-leadership/konstantin-halachev/)",
-        "url": "https://insurify.com/company/leadership",
+        "claim_value": "https://coverwise.example/leadership/kasimir-hollen/",
+        "excerpt": "[Kasimir Hollen's bio](/leadership/kasimir-hollen/)",
+        "url": "https://coverwise.example/company/leadership",
         "observed_at": "2026-09-16T16:43:14.946908Z",
         "authority": 1,
         "assertion_kind": "observed"
       }
     ],
     "employer": {
-      "description": "Insurify helps people manage $300 billion in coverage",
+      "description": "Coverwise helps people manage $300 billion in coverage",
       "industry": "insurance",
-      "knowledge_json": "{\"description\":\"Insurify helps people manage $300 billion in coverage\",\"industry\":\"insurance\"}"
+      "knowledge_json": "{\"description\":\"Coverwise helps people manage $300 billion in coverage\",\"industry\":\"insurance\"}"
     }
   }
 ]

@@ -1,10 +1,11 @@
 defmodule Neuron.RoleTitlesTest do
   use ExUnit.Case, async: true
 
-  # The people run 92406981 found on ciso.inc's leadership page, and the two
-  # it found elsewhere, as the graph holds them: sourced names and employers,
-  # titles where the page gave one, no location, no email.
-  defp person(id, facts, url \\ "https://www.ciso.inc/company/leadership") do
+  # The people run 92406981 found on a security vendor's leadership page, and
+  # the one it found elsewhere, as the graph held them, pseudonymised (people
+  # and company; titles, employers' shape and sources kept): sourced names and
+  # employers, titles where the page gave one, no location, no email.
+  defp person(id, facts, url \\ "https://www.bastion-security.example/company/leadership") do
     now = DateTime.to_iso8601(DateTime.utc_now())
 
     %{
@@ -28,14 +29,30 @@ defmodule Neuron.RoleTitlesTest do
 
   defp people do
     [
-      person(1, %{"name" => "Gary Perkins", "title" => "CISO", "employer" => "ciso.inc"}),
-      person(2, %{"name" => "Deb Smith", "title" => "CFO", "employer" => "ciso.inc"}),
-      person(3, %{"name" => "David Jemmett", "title" => "CEO & Founder", "employer" => "ciso.inc"}),
-      person(4, %{"name" => "Robert C. Oaks", "title" => "Director", "employer" => "ciso.inc"}),
-      person(5, %{"name" => "Andrew Hancox", "employer" => "ciso.inc"}),
+      person(1, %{
+        "name" => "Gavin Presto",
+        "title" => "CISO",
+        "employer" => "bastion-security.example"
+      }),
+      person(2, %{
+        "name" => "Dana Smolen",
+        "title" => "CFO",
+        "employer" => "bastion-security.example"
+      }),
+      person(3, %{
+        "name" => "Dorian Kest",
+        "title" => "CEO & Founder",
+        "employer" => "bastion-security.example"
+      }),
+      person(4, %{
+        "name" => "Rupert C. Oland",
+        "title" => "Director",
+        "employer" => "bastion-security.example"
+      }),
+      person(5, %{"name" => "Anselm Hart", "employer" => "bastion-security.example"}),
       person(
         6,
-        %{"name" => "Sebastián Vargas", "title" => "CEO TTPSEC SPA"},
+        %{"name" => "Silvio Varda", "title" => "CEO ORBITSEC SPA"},
         "https://www.linkedin.com/pulse/como-crear-un-plan"
       )
     ]
@@ -60,7 +77,7 @@ defmodule Neuron.RoleTitlesTest do
     assert selection.ranked == 0
     assert selection.rejected == 6
     assert selection.withheld_contact == 0
-    # Every person fails the role check; Vargas also has no employer.
+    # Every person fails the role check; Varda also has no employer.
     assert selection.rejected_by.role == 6
     assert selection.rejected_by.employer == 1
     assert selection.rejected_by.name == 0
@@ -75,12 +92,17 @@ defmodule Neuron.RoleTitlesTest do
 
     by_name = Map.new(selection.rejected_people, &{&1.name, &1})
 
-    assert %{title: "Director", employer: "ciso.inc", checks: [:role], person_id: "person-4"} =
-             by_name["Robert C. Oaks"]
+    assert %{
+             title: "Director",
+             employer: "bastion-security.example",
+             checks: [:role],
+             person_id: "person-4"
+           } =
+             by_name["Rupert C. Oland"]
 
-    assert %{title: nil, checks: [:role]} = by_name["Andrew Hancox"]
-    assert %{employer: nil, checks: [:employer, :role]} = by_name["Sebastián Vargas"]
-    refute Map.has_key?(by_name, "Gary Perkins")
+    assert %{title: nil, checks: [:role]} = by_name["Anselm Hart"]
+    assert %{employer: nil, checks: [:employer, :role]} = by_name["Silvio Varda"]
+    refute Map.has_key?(by_name, "Gavin Presto")
   end
 
   test "expanded titles match whole words in a title, never a substring of another word" do
@@ -88,7 +110,7 @@ defmodule Neuron.RoleTitlesTest do
 
     {ranked, selection} = Neuron.Selection.select(people(), target, [], @opts)
 
-    assert Enum.map(ranked, & &1.person_name) == ["Gary Perkins"]
+    assert Enum.map(ranked, & &1.person_name) == ["Gavin Presto"]
     # "Director" contains the letters c-t-o and must not match "CTO".
     assert selection.rejected_by.role == 5
     assert selection.ranked == 1

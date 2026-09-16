@@ -26,13 +26,13 @@ defmodule Neuron.CompanyListTest do
     assert {:ok, campaign} =
              Neuron.Campaign.normalize_campaign(Map.put(@answers, :companies, @companies))
 
-    assert campaign.companies == ["softwaremill.com", "lumenglobal.io"]
+    assert campaign.companies == ["quillmark.example", "lumenglobal.io"]
   end
 
   test "an entry that is not a company domain is rejected, naming it" do
     assert {:error, {:invalid_company, "Lumen Global"}} =
              Neuron.Campaign.normalize_campaign(
-               Map.put(@answers, :companies, ["softwaremill.com", "Lumen Global"])
+               Map.put(@answers, :companies, ["quillmark.example", "Lumen Global"])
              )
   end
 
@@ -67,7 +67,7 @@ defmodule Neuron.CompanyListTest do
     assert {:goto, :dispatch, data} = Neuron.CampaignPipeline.stage(:people_pages, data(), [])
 
     assert Enum.map(data.pending_children, & &1.source.url) == [
-             "https://softwaremill.com",
+             "https://quillmark.example",
              "https://lumenglobal.io"
            ]
   end
@@ -78,8 +78,8 @@ defmodule Neuron.CompanyListTest do
     def fetch(url, _opts) do
       page =
         case url do
-          "https://softwaremill.com" -> "softwaremill-home"
-          "https://softwaremill.com/team" -> "softwaremill-team"
+          "https://quillmark.example" -> "quillmark-home"
+          "https://quillmark.example/team" -> "quillmark-team"
           "https://lumenglobal.io" -> "lumenglobal-home"
           _ -> nil
         end
@@ -118,8 +118,8 @@ defmodule Neuron.CompanyListTest do
                 )
             }
 
-          prompt =~ "Source: https://softwaremill.com/team" ->
-            %{claims: softwaremill_team_claims()}
+          prompt =~ "Source: https://quillmark.example/team" ->
+            %{claims: quillmark_team_claims()}
 
           true ->
             %{claims: []}
@@ -128,16 +128,16 @@ defmodule Neuron.CompanyListTest do
       {:ok, %{"choices" => [%{"message" => %{"content" => Jason.encode!(json)}}]}}
     end
 
-    defp softwaremill_team_claims do
+    defp quillmark_team_claims do
       for {name, title} <- [
-            {"Adam Warski", "Chief R&D Officer and co-founder"},
-            {"Michał Matłoka", "CTO"},
-            {"Tomasz Dziurko", "VP of Engineering"}
+            {"Aldo Veskari", "Chief R&D Officer and co-founder"},
+            {"Mira Talvik", "CTO"},
+            {"Tobin Draszek", "VP of Engineering"}
           ],
           {predicate, value, excerpt} <- [
             {"name", name, "### #{name}"},
             {"title", title, title},
-            {"employer", "softwaremill.com", "### #{name}"}
+            {"employer", "quillmark.example", "### #{name}"}
           ] do
         %{
           entity_type: "Person",
@@ -145,7 +145,7 @@ defmodule Neuron.CompanyListTest do
           predicate: predicate,
           value: value,
           excerpt: excerpt,
-          source_url: "https://softwaremill.com/team"
+          source_url: "https://quillmark.example/team"
         }
       end
     end
@@ -177,14 +177,14 @@ defmodule Neuron.CompanyListTest do
       refute_received {:model_called, "Plan the next round" <> _}
 
       people_pages = run.result.people_pages
-      assert people_pages["softwaremill.com"].found == "https://softwaremill.com/team"
+      assert people_pages["quillmark.example"].found == "https://quillmark.example/team"
       assert people_pages["lumenglobal.io"].found == nil
       assert people_pages["lumenglobal.io"].probes == 3
 
       names = Enum.map(run.result.leads, & &1.person_name)
-      assert "Michał Matłoka" in names
-      assert "Tomasz Dziurko" in names
-      refute "Adam Warski" in names
+      assert "Mira Talvik" in names
+      assert "Tobin Draszek" in names
+      refute "Aldo Veskari" in names
       assert run.result.stop_reason in [:companies_exhausted, :target_met]
     end
   end
