@@ -2,10 +2,12 @@ defmodule Neuron.IndustryWeightTest do
   use ExUnit.Case, async: true
 
   # Run 427e7708's campaign as it reached rank, and the two people it
-  # rejected on industry alone (#81): insurify.com's CTO and VP of
-  # Engineering, read from the graph. Insurify's industry is "insurance",
-  # which contains none of the campaign's industry terms.
-  @leaders "test/fixtures/427e7708_insurify_leaders.json" |> File.read!() |> Jason.decode!()
+  # rejected on industry alone (#81): a CTO and a VP of Engineering at an
+  # insurance comparison marketplace, as the graph held them, pseudonymised
+  # (people, company and domain; titles, industry and claim shape kept). The
+  # company's industry is "insurance", which contains none of the campaign's
+  # industry terms.
+  @leaders "test/fixtures/427e7708_leaders.json" |> File.read!() |> Jason.decode!()
 
   @campaign %{
     seller_profile: %{domain: "nyx-labs.org", offer: "Offensive security assessments"},
@@ -40,8 +42,8 @@ defmodule Neuron.IndustryWeightTest do
     {ranked, selection} = Neuron.Selection.select(@leaders, @campaign, [], @opts)
 
     assert Enum.sort(Enum.map(ranked, & &1.person_name)) == [
-             "Gene Shkolnik",
-             "Konstantin Halachev"
+             "Gideon Shale",
+             "Kasimir Hollen"
            ]
 
     assert selection.rejected == 0

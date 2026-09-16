@@ -7,7 +7,7 @@ defmodule Neuron.ArticleRejectionTest do
   # names a buyer's decision makers.
   @articles [
     "https://blog.iomergent.com/should-first-security-hire-be-ciso-or-engineer",
-    "https://guptadeepak.com/ciso/first-security-hire-is-not-an-engineer/",
+    "https://ravenmoor.example/ciso/first-security-hire-is-not-an-engineer/",
     "https://medium.com/people-ai-engineering/how-to-startup-security-when-you-dont-have-a-security-department-yet-part-1-e8760600939d",
     "https://unsecure.substack.com/p/when-is-it-time-for-your-first-security",
     "https://gracker.ai/llms.txt",
@@ -17,10 +17,10 @@ defmodule Neuron.ArticleRejectionTest do
     "https://goauthentik.io/blog/2024-06-11-first-90-days/",
     "https://onpay.com/insights/payroll-security/",
     "https://www.adp.com/resources/articles-and-insights/articles/s/saas-payroll.aspx",
-    "https://tylertringas.com/selling-my-bootstrapped-saas-business/",
-    "https://yashchandra.com/post/10-years-of-success-and-failures-as-a-bootstrapped-saas-founder",
-    "https://onpay.com/about-us/author/jon-davis/",
-    "https://www.linkedin.com/pulse/como-crear-un-plan-director-seguridad-de-la-y-forma-e-vargas"
+    "https://tobyhale.example/selling-my-bootstrapped-saas-business/",
+    "https://yarrowkhan.example/post/10-years-of-success-and-failures-as-a-bootstrapped-saas-founder",
+    "https://onpay.com/about-us/author/jordan-vale/",
+    "https://www.linkedin.com/pulse/como-crear-un-plan-director-seguridad-de-la-y-forma-e-varda"
   ]
 
   # Company pages from the same runs: team, leadership, about, contact,
@@ -33,7 +33,7 @@ defmodule Neuron.ArticleRejectionTest do
     "https://www.ascentregtech.com/leadership/",
     "https://www.fintech-galaxy.com/about-us/team",
     "https://securityscorecard.com/company/leadership/",
-    "https://guptadeepak.com/contact/",
+    "https://ravenmoor.example/contact/",
     "https://gusto.com/product/payroll/secure",
     "https://www.entrust.com/use-case/kyc",
     "https://blinq.me/security/responsible-disclosure-program",

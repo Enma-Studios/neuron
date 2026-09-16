@@ -93,7 +93,7 @@ Neuron.Campaign.intake(%{
   url: "https://nyx-labs.org/",
   target_roles: "CTOs and VPs of Engineering",
   target_organizations: "Software product companies",
-  companies: ["softwaremill.com", "https://lumenglobal.io/"],
+  companies: ["acme-software.example", "https://www.example-fintech.example/"],
   lead_count: 10
 })
 ```

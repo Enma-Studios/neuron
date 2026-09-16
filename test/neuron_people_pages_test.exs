@@ -6,8 +6,10 @@ defmodule Neuron.PeoplePagesTest do
 
   # Run ea7f7407 (#84) read contact pages. lumenglobal.io's names six roles
   # and no people, and the site has no page that names anyone: every people
-  # path 404s. softwaremill.com's links "Meet the team", which names its
-  # leaders with titles. Both pages are fixtures, captured after the run.
+  # path 404s. Another of the run's companies links "Meet the team" from its
+  # contact page, and that page names its leaders with titles; its pages are
+  # rebuilt with a pseudonymous company and people, titles and links kept.
+  # lumenglobal.io's pages name nobody and are kept as captured.
   @lumen_url "https://lumenglobal.io/contact-us"
   @lumen_markdown File.read!("test/fixtures/people_pages/lumenglobal-contact-us.md")
   # The six role claims the run extracted from that page, as the graph held
@@ -16,8 +18,8 @@ defmodule Neuron.PeoplePagesTest do
                 |> File.read!()
                 |> Jason.decode!()
 
-  @softwaremill_contact "https://softwaremill.com/contact"
-  @softwaremill_team "https://softwaremill.com/team"
+  @quillmark_contact "https://quillmark.example/contact"
+  @quillmark_team "https://quillmark.example/team"
 
   def markdown(fixture, url) do
     {:ok, snapshot} =
@@ -31,10 +33,10 @@ defmodule Neuron.PeoplePagesTest do
   describe "people links" do
     test "a company page's links to its people pages are found, in page order" do
       assert PeoplePages.links(
-               @softwaremill_contact,
-               markdown("softwaremill-contact", @softwaremill_contact)
+               @quillmark_contact,
+               markdown("quillmark-contact", @quillmark_contact)
              ) ==
-               ["https://softwaremill.com/team", "https://softwaremill.com/about-us"]
+               ["https://quillmark.example/team", "https://quillmark.example/about-us"]
     end
 
     test "a page with no people links gives none" do
@@ -168,14 +170,14 @@ defmodule Neuron.PeoplePagesTest do
 
     first = [
       child(@lumen_url, %{role_signals: signals}),
-      child(@softwaremill_contact, %{
-        people_links: ["https://softwaremill.com/team", "https://softwaremill.com/about-us"]
+      child(@quillmark_contact, %{
+        people_links: ["https://quillmark.example/team", "https://quillmark.example/about-us"]
       })
     ]
 
-    fetched = [@lumen_url, @softwaremill_contact]
+    fetched = [@lumen_url, @quillmark_contact]
 
-    # Neither contact page named anyone. softwaremill.com's own link to its
+    # Neither contact page named anyone. quillmark.example's own link to its
     # team page is tried first; lumenglobal.io links none, so the common
     # paths are tried on its host.
     assert {:goto, :dispatch, next} =
@@ -185,15 +187,15 @@ defmodule Neuron.PeoplePagesTest do
 
     assert Enum.sort(urls_of(next)) == [
              "https://lumenglobal.io/team",
-             "https://softwaremill.com/team"
+             "https://quillmark.example/team"
            ]
 
     assert next.role_signals == signals
 
-    # softwaremill.com/team names three people: found, and never probed again.
+    # quillmark.example/team names three people: found, and never probed again.
     # lumenglobal.io/team is a 404 that names nobody: not a hit.
     second = [
-      child("https://softwaremill.com/team", %{named_people: 3}),
+      child("https://quillmark.example/team", %{named_people: 3}),
       child("https://lumenglobal.io/team", %{})
     ]
 
@@ -232,8 +234,8 @@ defmodule Neuron.PeoplePagesTest do
                people_page_attempts: 3
              )
 
-    assert done.people_pages["softwaremill.com"].found == "https://softwaremill.com/team"
-    assert done.people_pages["softwaremill.com"].probes == 1
+    assert done.people_pages["quillmark.example"].found == "https://quillmark.example/team"
+    assert done.people_pages["quillmark.example"].probes == 1
     assert done.people_pages["lumenglobal.io"].found == nil
     assert done.people_pages["lumenglobal.io"].probes == 3
   end
@@ -241,17 +243,17 @@ defmodule Neuron.PeoplePagesTest do
   test "companies from anywhere can be given, not only those search found" do
     assert {:goto, :dispatch, next} =
              Neuron.CampaignPipeline.stage(:people_pages, data([], []),
-               companies: ["softwaremill.com"],
+               companies: ["quillmark.example"],
                people_page_attempts: 3
              )
 
     # Nothing has been read from it yet, so it starts at its home page.
-    assert urls_of(next) == ["https://softwaremill.com"]
+    assert urls_of(next) == ["https://quillmark.example"]
   end
 
   defmodule Model do
     # Claims shaped as extraction returns them for each fixture page: the
-    # run's own nameless roles for lumenglobal.io, and softwaremill.com's
+    # run's own nameless roles for lumenglobal.io, and quillmark.example's
     # leaders by name on its own team page.
     def complete(messages, _opts) do
       [_, url] = Regex.run(~r/^Source: (\S+)$/m, List.last(messages).content)
@@ -263,16 +265,16 @@ defmodule Neuron.PeoplePagesTest do
             |> File.read!()
             |> Jason.decode!()
 
-          "https://softwaremill.com/team" ->
+          "https://quillmark.example/team" ->
             for {name, title} <- [
-                  {"Adam Warski", "Chief R&D Officer and co-founder"},
-                  {"Michał Matłoka", "CTO"},
-                  {"Tomasz Dziurko", "VP of Engineering"}
+                  {"Aldo Veskari", "Chief R&D Officer and co-founder"},
+                  {"Mira Talvik", "CTO"},
+                  {"Tobin Draszek", "VP of Engineering"}
                 ],
                 {predicate, value, excerpt} <- [
                   {"name", name, "### #{name}"},
                   {"title", title, title},
-                  {"employer", "softwaremill.com", "### #{name}"}
+                  {"employer", "quillmark.example", "### #{name}"}
                 ] do
               %{
                 "entity_type" => "Person",
@@ -294,7 +296,7 @@ defmodule Neuron.PeoplePagesTest do
     def fetch(url, _opts) do
       html =
         case url do
-          "https://softwaremill.com/team" -> "softwaremill-team"
+          "https://quillmark.example/team" -> "quillmark-team"
         end
 
       {:ok, %{html: File.read!("test/fixtures/people_pages/#{html}.html"), title: "Team"}}
@@ -339,8 +341,8 @@ defmodule Neuron.PeoplePagesTest do
       assert people == []
     end
 
-    test "softwaremill.com's team page yields its named people" do
-      result = ingest(%{url: @softwaremill_team})
+    test "quillmark.example's team page yields its named people" do
+      result = ingest(%{url: @quillmark_team})
 
       assert result.named_people == 3
       assert result.role_signals == []

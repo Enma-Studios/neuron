@@ -2,38 +2,39 @@ defmodule Neuron.LeadershipPeopleTest do
   use ExUnit.Case, async: false
 
   # The three company-published leadership pages run 92450aed ingested and got
-  # no people from (#67). Captured after the run, since the host's graph had
-  # been reset; each still names its leaders without linking a profile.
+  # no people from (#67), rebuilt with pseudonymous people and companies:
+  # each keeps the shape its page named leaders in (image alt text, prose,
+  # bold names before a bio) and their titles, and links no profile.
   @pages %{
-    "https://atlastravel.com/company/leadership" => %{
-      fixture: "atlastravel",
-      employer: "atlastravel.com",
+    "https://meridiantravel.example/company/leadership" => %{
+      fixture: "meridiantravel",
+      employer: "meridiantravel.example",
       people: [
-        {"Elaine Osgood", "Chief Executive Officer", "Elaine Osgood, Chief Executive Officer"},
-        {"Lea Cahill", "President", "Lea Cahill, President"},
-        {"Andy Piggott", "Chief Information Officer", "Andy Piggott, Chief Information Officer"},
-        {"Rashi Gujral", "Chief Financial Officer", "Rashi Gujral, Chief Financial Officer"}
+        {"Elise Ormond", "Chief Executive Officer", "Elise Ormond, Chief Executive Officer"},
+        {"Lena Carrow", "President", "Lena Carrow, President"},
+        {"Anders Pell", "Chief Information Officer", "Anders Pell, Chief Information Officer"},
+        {"Ravi Gunnar", "Chief Financial Officer", "Ravi Gunnar, Chief Financial Officer"}
       ]
     },
-    "https://careers.booking.com/teams/leadership" => %{
-      fixture: "booking-careers",
-      employer: "booking.com",
+    "https://careers.harbourstay.example/teams/leadership" => %{
+      fixture: "harbourstay-careers",
+      employer: "harbourstay.example",
       people: [
-        {"Rob Francis", "Chief Technology Officer", "Rob Francis, our Chief Technology Officer"},
-        {"Glenn Fogel", "President & Chief Executive Officer",
-         "Glenn Fogel, President & Chief Executive Officer"}
+        {"Rowan Fitch", "Chief Technology Officer", "Rowan Fitch, our Chief Technology Officer"},
+        {"Graham Fennick", "President & Chief Executive Officer",
+         "Graham Fennick, President & Chief Executive Officer"}
       ]
     },
-    "https://www.bookingholdings.com/about/leadership" => %{
-      fixture: "bookingholdings",
-      employer: "bookingholdings.com",
+    "https://www.harbourstayholdings.example/about/leadership" => %{
+      fixture: "harbourstayholdings",
+      employer: "harbourstayholdings.example",
       people: [
-        {"Glenn Fogel", "Chief Executive Officer and President",
-         "**Glenn Fogel** has served as our Chief Executive Officer and President"},
-        {"Ewout Steenbergen", "Executive Vice President and Chief Financial Officer",
-         "**Ewout Steenbergen** has been our Executive Vice President and Chief Financial Officer"},
-        {"Paulo Pisano", "Chief Human Resources Officer",
-         "**Paulo Pisano** has served as our Chief Human Resources Officer"}
+        {"Graham Fennick", "Chief Executive Officer and President",
+         "**Graham Fennick** has served as our Chief Executive Officer and President"},
+        {"Evert Sandler", "Executive Vice President and Chief Financial Officer",
+         "**Evert Sandler** has been our Executive Vice President and Chief Financial Officer"},
+        {"Petra Sollen", "Chief Human Resources Officer",
+         "**Petra Sollen** has served as our Chief Human Resources Officer"}
       ]
     }
   }
@@ -94,12 +95,16 @@ defmodule Neuron.LeadershipPeopleTest do
   test "a person named on a page their employer does not own is still dropped" do
     # Names in a listicle are not the employer speaking for itself.
     url = "https://thefinancialtechnologyreport.com/top-financial-technology-ceos-of-2025"
-    page = %{employer: "booking.com", people: [{"Glenn Fogel", "CEO", "Glenn Fogel, CEO"}]}
+
+    page = %{
+      employer: "harbourstay.example",
+      people: [{"Graham Fennick", "CEO", "Graham Fennick, CEO"}]
+    }
 
     assert {:ok, []} =
              Neuron.Knowledge.validate_claims(
                %{"claims" => claims(url, page)},
-               %{url: url, markdown: "Glenn Fogel, CEO of Booking.com"}
+               %{url: url, markdown: "Graham Fennick, CEO of Harbourstay"}
              )
   end
 
@@ -107,9 +112,9 @@ defmodule Neuron.LeadershipPeopleTest do
     def fetch(url, _opts) do
       name =
         case url do
-          "https://atlastravel.com" <> _ -> "atlastravel"
-          "https://careers.booking.com" <> _ -> "booking-careers"
-          "https://www.bookingholdings.com" <> _ -> "bookingholdings"
+          "https://meridiantravel.example" <> _ -> "meridiantravel"
+          "https://careers.harbourstay.example" <> _ -> "harbourstay-careers"
+          "https://www.harbourstayholdings.example" <> _ -> "harbourstayholdings"
         end
 
       {:ok, %{html: File.read!("test/fixtures/leadership/#{name}.html"), title: "Leadership"}}
@@ -137,7 +142,7 @@ defmodule Neuron.LeadershipPeopleTest do
     end
 
     test "creates each named person, sourced to the page, at own-site authority" do
-      url = "https://atlastravel.com/company/leadership"
+      url = "https://meridiantravel.example/company/leadership"
       {:ok, id} = Neuron.Ingestion.submit(%{url: url}, adapter: Browser, model_provider: Model)
 
       for _ <- 1..6, do: Oban.drain_queue(Neuron.Oban, queue: :agents)
@@ -145,15 +150,15 @@ defmodule Neuron.LeadershipPeopleTest do
 
       {:ok, %{"people" => people}} =
         Neuron.Graph.query(
-          ~s|{ people(func: type(Person)) @filter(eq(name, "Elaine Osgood") OR eq(name, "Lea Cahill") OR eq(name, "Andy Piggott") OR eq(name, "Rashi Gujral")) { name title employer { domain } assertions { predicate url authority } } }|
+          ~s|{ people(func: type(Person)) @filter(eq(name, "Elise Ormond") OR eq(name, "Lena Carrow") OR eq(name, "Anders Pell") OR eq(name, "Ravi Gunnar")) { name title employer { domain } assertions { predicate url authority } } }|
         )
 
       assert Enum.sort(Enum.map(people, & &1["name"])) ==
-               ["Andy Piggott", "Elaine Osgood", "Lea Cahill", "Rashi Gujral"]
+               ["Anders Pell", "Elise Ormond", "Lena Carrow", "Ravi Gunnar"]
 
       for person <- people do
         assert person["title"] != nil
-        assert person["employer"]["domain"] == "atlastravel.com"
+        assert person["employer"]["domain"] == "meridiantravel.example"
 
         for assertion <- person["assertions"] do
           assert assertion["url"] == url
