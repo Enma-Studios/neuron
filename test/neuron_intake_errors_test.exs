@@ -87,9 +87,25 @@ defmodule Neuron.Campaign.IntakeErrorsTest do
     assert length(keys) < 8
   end
 
-  test "no URL at all is unchanged: answers alone still work" do
-    assert {:ok, campaign} = Neuron.Campaign.intake(@answers, model_provider: SilentModel)
+  test "no URL asks only for the website, and carries the answers" do
+    # The seller's domain decides whose people are never leads, so it comes
+    # from a URL, never from the organization's name (#68). Before, "Enma
+    # Studios" itself became the seller domain.
+    assert {:needs_input, details} =
+             Neuron.Campaign.intake(@answers, model_provider: SilentModel)
+
+    assert details.reason == :organization_domain_required
+    assert Enum.map(details.questions, & &1.key) == [:organization]
+    assert details.partial[:target_roles] == ["Founder", "CTO"]
+
+    assert {:ok, campaign} =
+             Neuron.Campaign.intake(Map.put(@answers, :url, "https://enma.studio"),
+               adapter: UnreachableBrowser,
+               model_provider: SilentModel
+             )
+
     assert campaign.organization == "Enma Studios"
+    assert campaign.seller_profile.domain == "enma.studio"
   end
 
   test "incomplete answers and no URL ask for what is missing, with no scrape error" do

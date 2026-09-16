@@ -340,7 +340,7 @@ defmodule Neuron.Campaign do
 
     if missing == [] do
       organization = values[:organization] || values[:domain]
-      domain = values[:domain] || domain_from_url(values[:url]) || hostname(organization)
+      domain = seller_domain(values, organization)
 
       if is_binary(domain) and domain != "" do
         profile = fit_profile(values)
@@ -480,8 +480,13 @@ defmodule Neuron.Campaign do
 
   defp input_key(key), do: key
 
-  defp domain_from_url(url) when is_binary(url), do: hostname(url)
-  defp domain_from_url(_), do: nil
+  # The seller's domain decides whose people are never leads, so it comes
+  # from the input URL whenever there is one. `domain` is an extracted field,
+  # and intake returned a phrase from the page there on run 92450aed.
+  defp seller_domain(values, organization) do
+    url = Enum.find([values[:url], values[:website], values[:source_url]], &(not blank?(&1)))
+    Neuron.Knowledge.registrable_domain(url || values[:domain] || hostname(organization))
+  end
 
   defp hostname(value) when is_binary(value) do
     uri = URI.parse(if(String.contains?(value, "://"), do: value, else: "https://" <> value))
