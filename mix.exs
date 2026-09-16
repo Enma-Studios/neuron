@@ -4,7 +4,7 @@ defmodule Neuron.MixProject do
   def project do
     [
       app: :neuron,
-      version: "0.2.14",
+      version: "0.2.15",
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
