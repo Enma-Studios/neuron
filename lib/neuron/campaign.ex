@@ -324,7 +324,9 @@ defmodule Neuron.Campaign do
           target_roles: target[:roles] || profile_value(values[:fit_profile], "target_role"),
           target_organizations: target[:markets] || profile_markets(values[:fit_profile]),
           geography: target[:geography],
-          exclusions: target[:exclusions]
+          exclusions: target[:exclusions],
+          industries: target[:industries],
+          company_size: target[:company_size]
         },
         values
       )
@@ -355,7 +357,9 @@ defmodule Neuron.Campaign do
           markets: List.wrap(values[:target_organizations] || profile[:target_organizations]),
           roles: List.wrap(values[:target_roles] || profile_value(profile, "target_role")),
           geography: List.wrap(values[:geography]),
-          exclusions: exclusion_terms(values[:exclusions])
+          exclusions: exclusion_terms(values[:exclusions]),
+          industries: List.wrap(values[:industries]),
+          company_size: company_size(values[:company_size])
         }
 
         with {:ok, seller} <- Neuron.Contracts.validate(Neuron.Contracts.Seller, seller),
@@ -433,6 +437,14 @@ defmodule Neuron.Campaign do
     |> Enum.reject(&(&1 == ""))
   end
 
+  # `%{min:, max:}` in employees, either bound optional.
+  defp company_size(%{} = range) do
+    bound = fn key -> Map.get(range, key, Map.get(range, to_string(key))) end
+    %{min: bound.(:min), max: bound.(:max)}
+  end
+
+  defp company_size(_), do: nil
+
   defp profile_value(profile, category) when is_map(profile) do
     profile
     |> Map.get(:requirements, Map.get(profile, "requirements", []))
@@ -462,7 +474,7 @@ defmodule Neuron.Campaign do
 
   defp normalize_keys(other), do: other
 
-  @input_keys ~w(organization domain field offer name url website seller_geography target_roles target_organizations geography exclusions lead_count campaign_id seller_profile target_profile roles markets fit_profile preferred_geographies threshold assertions action campaigns candidate_campaigns approved_campaigns campaign_approval)a
+  @input_keys ~w(organization domain field offer name url website seller_geography target_roles target_organizations geography exclusions industries company_size lead_count campaign_id seller_profile target_profile roles markets fit_profile preferred_geographies threshold assertions action campaigns candidate_campaigns approved_campaigns campaign_approval)a
   defp input_key(key) when is_binary(key),
     do: Enum.find(@input_keys, key, &(Atom.to_string(&1) == key))
 

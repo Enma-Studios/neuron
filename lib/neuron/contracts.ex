@@ -26,10 +26,13 @@ defmodule Neuron.Contracts.Target do
     field(:roles, {:array, :string}, default: [])
     field(:geography, {:array, :string}, default: [])
     field(:exclusions, {:array, :string}, default: [])
+    field(:industries, {:array, :string}, default: [])
+    field(:company_size, :map)
   end
 
   def changeset(value, attrs) do
-    value |> cast(attrs, [:markets, :roles, :geography, :exclusions])
+    value
+    |> cast(attrs, [:markets, :roles, :geography, :exclusions, :industries, :company_size])
   end
 end
 
@@ -76,6 +79,7 @@ defmodule Neuron.Contracts.Claim do
       "name",
       "description",
       "industry",
+      "employee_count",
       "title",
       "email",
       "employer",
