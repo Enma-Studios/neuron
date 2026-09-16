@@ -75,6 +75,46 @@ defmodule Neuron.Browser.SessionsTest do
     refute_receive {:stopped, "explicit"}, 200
   end
 
+  defmodule SlowProvider do
+    # A remote stop that does not come back until the test releases it.
+    def stop(%{id: id, reply_to: pid}) do
+      send(pid, {:stopping, id, self()})
+
+      receive do
+        :release -> send(pid, {:stopped, id})
+      end
+
+      :ok
+    end
+  end
+
+  test "a stop that hangs does not hold up other sessions registering or closing" do
+    # #38: every stop ran inside the one Sessions process, so a slow remote
+    # stop blocked every other close, and every track behind it timed out.
+    owner = self()
+    slow = %{handle("slow", owner) | stop_with: SlowProvider}
+    fast = handle("fast", owner)
+
+    :ok = Neuron.Browser.Sessions.track(slow)
+    closing = Task.async(fn -> Neuron.Browser.Sessions.close(slow) end)
+    assert_receive {:stopping, "slow", stopper}, 1_000
+
+    tracking = Task.async(fn -> Neuron.Browser.Sessions.track(fast) end)
+    assert {:ok, :ok} = Task.yield(tracking, 1_000)
+
+    assert {:ok, :ok} =
+             Task.yield(Task.async(fn -> Neuron.Browser.Sessions.close(fast) end), 1_000)
+
+    assert_receive {:stopped, "fast"}, 1_000
+
+    # The slow close is still waiting on its own stop, and returns once it does.
+    assert Task.yield(closing, 100) == nil
+    send(stopper, :release)
+    assert :ok = Task.await(closing, 1_000)
+    assert_receive {:stopped, "slow"}, 1_000
+    assert Neuron.Browser.Sessions.open() == []
+  end
+
   test "sweep stops only sessions still running past the TTL" do
     now = ~U[2026-09-10 12:00:00Z]
 
