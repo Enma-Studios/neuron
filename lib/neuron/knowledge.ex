@@ -17,6 +17,28 @@ defmodule Neuron.Knowledge do
     String.downcase(uri.host || "") |> String.trim_leading("www.")
   end
 
+  # ponytail: a short list of two-level public suffixes, not the Public
+  # Suffix List; a seller on a suffix missing here gets one label too few.
+  # Add the list as a dependency if sellers outside these show up.
+  @two_level_suffixes ~w(co.uk org.uk ac.uk gov.uk me.uk com.au net.au org.au co.nz org.nz co.jp com.br co.in com.sg co.za com.mx com.cn com.tr com.ar)
+
+  @doc """
+  The registrable domain of a URL or host: `https://careers.booking.com/x`
+  is `booking.com`, `shop.example.co.uk` is `example.co.uk`. `nil` when the
+  value is not a hostname at all.
+  """
+  def registrable_domain(value) when is_binary(value) do
+    host = domain(value)
+
+    if Regex.match?(~r/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, host) do
+      labels = String.split(host, ".")
+      keep = if Enum.join(Enum.take(labels, -2), ".") in @two_level_suffixes, do: 3, else: 2
+      labels |> Enum.take(-keep) |> Enum.join(".")
+    end
+  end
+
+  def registrable_domain(_), do: nil
+
   def entity_id("Organization", identity), do: id("org", domain(identity))
   def entity_id(type, "urn:" <> _ = identity), do: id(String.downcase(type), identity)
   def entity_id(type, identity), do: id(String.downcase(type), canonical_url(identity))
