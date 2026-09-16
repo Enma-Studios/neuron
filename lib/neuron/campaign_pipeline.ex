@@ -4,7 +4,18 @@ defmodule Neuron.CampaignPipeline do
   @moduledoc "Campaign discovery schedules durable source jobs and selects from shared graph evidence."
 
   def stages,
-    do: [:prepare, :retrieve, :plan_search, :search, :dispatch, :collect, :rank, :draft, :finish]
+    do: [
+      :prepare,
+      :retrieve,
+      :plan_search,
+      :search,
+      :dispatch,
+      :collect,
+      :people_pages,
+      :rank,
+      :draft,
+      :finish
+    ]
 
   def stage(:prepare, campaign, opts) do
     for assertion <- Keyword.get(opts, :assertions, campaign[:assertions] || []) do
@@ -196,6 +207,61 @@ defmodule Neuron.CampaignPipeline do
     end
   end
 
+  # Before rank, so the people a company's own people page names reach
+  # scoring. Pages just collected are judged by the named people they
+  # yielded; each company without a people page gets its next probe, and
+  # the probes go through dispatch and collect like any other page (#84).
+  def stage(:people_pages, data, opts) do
+    results =
+      for child <- Map.get(data, :pending_children, []),
+          %{result: %{} = result} <- [Neuron.get_run(child.id)],
+          do: result
+
+    state = Neuron.PeoplePages.observe(Map.get(data, :people_pages, %{}), results)
+
+    signals =
+      Enum.uniq(
+        Map.get(data, :role_signals, []) ++
+          Enum.flat_map(results, &Map.get(&1, :role_signals, []))
+      )
+
+    companies =
+      (Enum.map(data.urls, &Neuron.Knowledge.registrable_domain/1) ++
+         List.wrap(opts[:companies]))
+      |> Enum.uniq()
+      |> Enum.filter(
+        &(Neuron.PeoplePages.company?(&1) and &1 != data.campaign.seller_profile.domain)
+      )
+
+    remaining = Keyword.get(opts, :max_pages, 96) - length(data.urls)
+
+    {state, urls} =
+      if remaining > 0 and
+           DateTime.diff(DateTime.utc_now(), data.started_at) <
+             Keyword.get(opts, :budget_seconds, 7200) do
+        Neuron.PeoplePages.next(state, companies,
+          attempts: Keyword.get(opts, :people_page_attempts, 3),
+          fetched: data.urls
+        )
+      else
+        {state, []}
+      end
+
+    data = Map.merge(data, %{people_pages: state, role_signals: signals})
+
+    case Enum.take(urls, max(remaining, 0)) do
+      [] ->
+        {:ok, data}
+
+      urls ->
+        {:goto, :dispatch,
+         %{
+           data
+           | pending_children: Enum.map(urls, &%{id: Ecto.UUID.generate(), source: %{url: &1}})
+         }}
+    end
+  end
+
   def stage(:rank, data, opts) do
     with {:ok, candidates, selection} <- Neuron.Selection.candidates(data.campaign, opts),
          {:ok, leads} <-
@@ -261,7 +327,9 @@ defmodule Neuron.CampaignPipeline do
       stop_reason: data.stop_reason,
       failures: data.failures,
       selection: data[:selection],
-      rejected_sources: Map.get(data, :rejected_sources, [])
+      rejected_sources: Map.get(data, :rejected_sources, []),
+      role_signals: Map.get(data, :role_signals, []),
+      people_pages: Map.get(data, :people_pages, %{})
     }
 
     with {:ok, _} <- Neuron.Schemas.validate_campaign_result(result),

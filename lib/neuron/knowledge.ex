@@ -146,6 +146,48 @@ defmodule Neuron.Knowledge do
   def validate_claims(_, _), do: {:error, :expected_claims_array}
 
   @doc """
+  Split a page's claims into what is kept and the roles it names with no
+  person. A title with no name cannot become a lead under any campaign, so
+  it is never a candidate: it is returned as a company role signal,
+  `%{employer, title, source_url}`, and its claims are not ingested (#84).
+  """
+  def role_signals(claims, document) do
+    named =
+      for %{entity_type: "Person", predicate: "name", identity: identity} <- claims,
+          into: MapSet.new(),
+          do: identity
+
+    {nameless, kept} =
+      Enum.split_with(
+        claims,
+        &(&1.entity_type == "Person" and not MapSet.member?(named, &1.identity))
+      )
+
+    signals =
+      for {_identity, group} <- Enum.group_by(nameless, & &1.identity),
+          title = Enum.find(group, &(&1.predicate == "title")),
+          title != nil do
+        employer = Enum.find(group, &(&1.predicate == "employer"))
+
+        %{
+          employer: domain((employer && employer.value) || document.url),
+          title: title.value,
+          source_url: document.url
+        }
+      end
+
+    {kept, signals}
+  end
+
+  @doc "How many distinct people in `claims` have a name."
+  def named_people(claims) do
+    claims
+    |> Enum.filter(&(&1.entity_type == "Person" and &1.predicate == "name"))
+    |> Enum.uniq_by(& &1.identity)
+    |> length()
+  end
+
+  @doc """
   The identity of a person an organization names on its own site: stable
   per employer and name, since such a page links no profile to identify
   them by.

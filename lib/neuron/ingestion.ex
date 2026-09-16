@@ -58,12 +58,13 @@ defmodule Neuron.Ingestion do
 
     case Enum.find(results, &match?({:error, _}, &1)) do
       nil ->
-        {:ok,
-         Map.put(
-           data,
-           :claims,
-           Enum.flat_map(results, fn {:ok, claims} -> claims end) |> Enum.uniq()
-         )}
+        {claims, signals} =
+          results
+          |> Enum.flat_map(fn {:ok, claims} -> claims end)
+          |> Enum.uniq()
+          |> Neuron.Knowledge.role_signals(data.document)
+
+        {:ok, data |> Map.put(:claims, claims) |> Map.put(:role_signals, signals)}
 
       error ->
         error
@@ -82,7 +83,11 @@ defmodule Neuron.Ingestion do
             %{
               source_url: data.document.url,
               snapshot_id: data.snapshot_id,
-              claim_count: length(data.claims)
+              claim_count: length(data.claims),
+              # What a campaign's people-page step judges a page by.
+              named_people: Neuron.Knowledge.named_people(data.claims),
+              people_links: Neuron.PeoplePages.links(data.document.url, data.document.markdown),
+              role_signals: Map.get(data, :role_signals, [])
             }}
   end
 
