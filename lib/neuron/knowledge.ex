@@ -17,9 +17,8 @@ defmodule Neuron.Knowledge do
     String.downcase(uri.host || "") |> String.trim_leading("www.")
   end
 
-  # ponytail: a short list of two-level public suffixes, not the Public
-  # Suffix List; a seller on a suffix missing here gets one label too few.
-  # Add the list as a dependency if sellers outside these show up.
+  # A short list of two-level public suffixes, not the Public Suffix List:
+  # a seller on a suffix missing here gets one label too few. #74.
   @two_level_suffixes ~w(co.uk org.uk ac.uk gov.uk me.uk com.au net.au org.au co.nz org.nz co.jp com.br co.in com.sg co.za com.mx com.cn com.tr com.ar)
 
   @doc """
