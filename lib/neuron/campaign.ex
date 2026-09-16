@@ -358,11 +358,12 @@ defmodule Neuron.Campaign do
           roles: List.wrap(values[:target_roles] || profile_value(profile, "target_role")),
           geography: List.wrap(values[:geography]),
           exclusions: exclusion_terms(values[:exclusions]),
-          industries: List.wrap(values[:industries]),
-          company_size: company_size(values[:company_size])
+          industries: List.wrap(values[:industries])
         }
 
-        with {:ok, seller} <- Neuron.Contracts.validate(Neuron.Contracts.Seller, seller),
+        with {:ok, company_size} <- company_size(values[:company_size]),
+             target = Map.put(target, :company_size, company_size),
+             {:ok, seller} <- Neuron.Contracts.validate(Neuron.Contracts.Seller, seller),
              {:ok, target} <- Neuron.Contracts.validate(Neuron.Contracts.Target, target),
              {:ok, campaign_id} <- Ecto.UUID.cast(values[:campaign_id] || Ecto.UUID.generate()) do
           {:ok,
@@ -375,6 +376,7 @@ defmodule Neuron.Campaign do
              fit_profile: profile
            })}
         else
+          {:error, {:invalid_company_size, _bound, _value}} = error -> error
           error -> {:error, {:invalid_campaign, error}}
         end
       else
@@ -437,13 +439,19 @@ defmodule Neuron.Campaign do
     |> Enum.reject(&(&1 == ""))
   end
 
-  # `%{min:, max:}` in employees, either bound optional.
+  # `%{min:, max:}` in employees, either bound optional. Bounds must be
+  # integers and are never parsed: an integer sorts below every string, so
+  # a bound of "20" would reject every organization that states a size.
   defp company_size(%{} = range) do
     bound = fn key -> Map.get(range, key, Map.get(range, to_string(key))) end
-    %{min: bound.(:min), max: bound.(:max)}
+
+    case Enum.find([:min, :max], &(not (is_nil(bound.(&1)) or is_integer(bound.(&1))))) do
+      nil -> {:ok, %{min: bound.(:min), max: bound.(:max)}}
+      key -> {:error, {:invalid_company_size, key, bound.(key)}}
+    end
   end
 
-  defp company_size(_), do: nil
+  defp company_size(_), do: {:ok, nil}
 
   defp profile_value(profile, category) when is_map(profile) do
     profile
