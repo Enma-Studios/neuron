@@ -145,39 +145,46 @@ defmodule Neuron.OrganizationGatesTest do
   end
 
   describe "industry" do
-    test "an organization whose industry and description match no term is rejected, and counted" do
+    # Weighed, not gated since #81: every case below is ranked, and what
+    # differs is the recorded match and the industry component.
+    test "an organization whose industry and description match no term is ranked, as a mismatch" do
       organization =
         facts(%{"employee_count" => "120"})
         |> Map.merge(%{"industry" => "Travel and e-commerce", "description" => "Online travel"})
 
-      assert {[], selection} = select(organization)
-      assert selection.rejected_by.industry == 1
+      assert {[lead], selection} = select(organization)
+      assert lead.industry_match == :mismatch
+      assert lead.score_breakdown.industry == 0.0
+      assert selection.industry_by.mismatch == 1
     end
 
-    test "a term in the description is enough" do
+    test "a term in the description is a match" do
       organization =
         facts(%{"employee_count" => "120"})
         |> Map.put("description", "A SaaS payroll platform for small businesses")
 
-      assert {[_lead], selection} = select(organization)
-      assert selection.rejected_by.industry == 0
+      assert {[lead], selection} = select(organization)
+      assert lead.industry_match == :match
+      assert lead.score_breakdown.industry == 1.0
+      assert selection.industry_by.match == 1
     end
 
-    test "a term must be a whole word" do
+    test "a term must be a whole word to match" do
       # "software" is not in "softwareless", and "SaaS" is not in "SaaSy".
       organization =
         facts(%{"employee_count" => "120"})
         |> Map.put("description", "A softwareless, SaaSy agency")
 
-      assert {[], selection} = select(organization)
-      assert selection.rejected_by.industry == 1
+      assert {[lead], _selection} = select(organization)
+      assert lead.industry_match == :mismatch
     end
 
-    test "an organization with no industry or description passes, and is counted as unknown" do
-      assert {[_lead], selection} = select(facts(%{"employee_count" => "120"}))
+    test "an organization with no industry or description is unknown, and weighed halfway" do
+      assert {[lead], selection} = select(facts(%{"employee_count" => "120"}))
 
-      assert selection.rejected_by.industry == 0
-      assert selection.unknown_by.industry == 1
+      assert lead.industry_match == :unknown
+      assert lead.score_breakdown.industry == 0.5
+      assert selection.industry_by.unknown == 1
     end
   end
 end
