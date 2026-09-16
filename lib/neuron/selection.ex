@@ -40,13 +40,13 @@ defmodule Neuron.Selection do
            ),
          {:ok, lexical} <-
            Neuron.Graph.query(
-             "query candidates($q: string, $space: string) { results(func: anyoftext(knowledge_text, $q), first: 200) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } } }",
+             "query candidates($q: string, $space: string) { results(func: anyoftext(knowledge_text, $q), first: 200) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } employer { name description industry } } }",
              %{"$q" => query, "$space" => Neuron.Embedding.space()},
              opts
            ),
          {:ok, semantic} <-
            Neuron.Graph.query(
-             "query candidates($v: float32vector, $space: string) { results(func: similar_to(#{Neuron.Embedding.field()}, 200, $v)) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } } }",
+             "query candidates($v: float32vector, $space: string) { results(func: similar_to(#{Neuron.Embedding.field()}, 200, $v)) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } employer { name description industry } } }",
              %{"$v" => vector, "$space" => Neuron.Embedding.space()},
              opts
            ) do
@@ -144,7 +144,7 @@ defmodule Neuron.Selection do
         seller: employer != "" and employer == campaign.seller_profile.domain,
         role: role == 0,
         geography: geography == 0,
-        exclusion: Enum.any?(target.exclusions, &contains?(text, &1))
+        exclusion: Enum.any?(target.exclusions, &contains?(exclusion_text(record, text), &1))
       ]
       |> Enum.filter(&elem(&1, 1))
       |> Keyword.keys()
@@ -308,6 +308,16 @@ defmodule Neuron.Selection do
 
   defp match_terms(terms, text),
     do: if(Enum.any?(terms, &contains?(text, &1)), do: 1.0, else: 0.0)
+
+  # An exclusion usually describes the company ("security vendors"), which a
+  # person's own facts never say, so the employer organization is read too.
+  defp exclusion_text(record, text) do
+    record["employer"]
+    |> List.wrap()
+    |> Enum.flat_map(&[&1["name"], &1["description"], &1["industry"]])
+    |> Enum.reject(&is_nil/1)
+    |> then(&Enum.join([text | &1], " "))
+  end
 
   defp match_words([], _), do: 1.0
 
