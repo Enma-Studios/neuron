@@ -66,6 +66,23 @@ defmodule Neuron.RoleTitlesTest do
     assert selection.rejected_by.name == 0
   end
 
+  test "each rejected person is recorded with their name, title, employer and failed checks" do
+    target = campaign(%{roles: ["technology leaders"], titles: ["CTO", "CISO"]})
+
+    {_ranked, selection} = Neuron.Selection.select(people(), target, [], @opts)
+
+    assert length(selection.rejected_people) == selection.rejected
+
+    by_name = Map.new(selection.rejected_people, &{&1.name, &1})
+
+    assert %{title: "Director", employer: "ciso.inc", checks: [:role], person_id: "person-4"} =
+             by_name["Robert C. Oaks"]
+
+    assert %{title: nil, checks: [:role]} = by_name["Andrew Hancox"]
+    assert %{employer: nil, checks: [:employer, :role]} = by_name["Sebastián Vargas"]
+    refute Map.has_key?(by_name, "Gary Perkins")
+  end
+
   test "expanded titles match whole words in a title, never a substring of another word" do
     target = campaign(%{roles: ["technology leaders"], titles: ["CTO", "CISO"]})
 
