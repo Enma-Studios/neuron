@@ -102,10 +102,21 @@ defmodule Neuron.Campaign do
     Enum.map(campaigns, &run(&1, opts))
   end
 
+  # Supplied answers are inputs, not hints: the page fills only what was not
+  # answered. A host sends every key and leaves the unanswered ones nil, so a
+  # plain merge let those nils erase what the page did supply.
   defp intake_answers(answers, url, opts) do
     case scrape_answers(url, opts) do
-      {:ok, scraped} -> take(Map.merge(scraped, answers))
-      {:error, cause} -> without_scrape(answers, cause)
+      {:ok, scraped} ->
+        supplied = for {key, value} <- answers, not blank?(value), do: key
+
+        scraped
+        |> Map.replace_lazy(:field_sources, &Map.drop(&1, supplied))
+        |> merge_nonblank(answers)
+        |> take()
+
+      {:error, cause} ->
+        without_scrape(answers, cause)
     end
   end
 
@@ -168,8 +179,12 @@ defmodule Neuron.Campaign do
 
   defp merge_approved_campaign(merged), do: merged
 
+  # Both sides share one key space first. A proposed campaign arrives from
+  # the model with string keys and answers with atom keys, and merged apart
+  # they both survived until `normalize_campaign/1` folded them together,
+  # where the string key, sorting after every atom, overwrote the answer.
   defp merge_nonblank(base, overrides) do
-    Enum.reduce(overrides, base, fn {key, value}, acc ->
+    Enum.reduce(normalize_keys(overrides), normalize_keys(base), fn {key, value}, acc ->
       if blank?(value), do: acc, else: Map.put(acc, key, value)
     end)
   end
