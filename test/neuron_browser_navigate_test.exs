@@ -45,6 +45,50 @@ defmodule Neuron.Browser.NavigateTest do
     end
   end
 
+  describe "a fetch that never returns" do
+    setup do
+      pinocchio = Application.get_env(:pinocchio, :browser, [])
+      on_exit(fn -> Application.put_env(:pinocchio, :browser, pinocchio) end)
+
+      # Accepts the create request and never answers it, with the provider's
+      # own receive timeout removed, so nothing inside the fetch ever gives
+      # up. Only the whole-fetch deadline can end it.
+      {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false])
+      {:ok, port} = :inet.port(listener)
+      silent = spawn(fn -> hold(listener, []) end)
+      :ok = :gen_tcp.controlling_process(listener, silent)
+      on_exit(fn -> Process.exit(silent, :kill) end)
+
+      Application.put_env(
+        :pinocchio,
+        :browser,
+        Keyword.put(pinocchio, :provider_timeout, :infinity)
+      )
+
+      Application.put_env(:neuron, :browser,
+        browser_use: [api_key: "test", endpoint: "http://127.0.0.1:#{port}/browsers"]
+      )
+
+      :ok
+    end
+
+    # The tag is the probe: without the deadline this test hangs until
+    # ExUnit kills it, well past the assertion below.
+    @tag timeout: 5_000
+    test "is a timeout error within its deadline" do
+      {elapsed, result} =
+        :timer.tc(fn -> Neuron.Browser.fetch("https://acme.example/", fetch_timeout: 300) end)
+
+      assert result == {:error, :browser_use_timeout}
+      assert elapsed < 2_000_000
+    end
+  end
+
+  defp hold(listener, sockets) do
+    {:ok, socket} = :gen_tcp.accept(listener)
+    hold(listener, [socket | sockets])
+  end
+
   test "a settled page is ready, and a redirect elsewhere is still accepted" do
     # A direct fetch passes nil for the URL, because it accepts wherever a
     # redirect landed and reads the final URL off the page.

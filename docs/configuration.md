@@ -13,6 +13,7 @@ Configure Neuron through Elixir `config` and your host's `runtime.exs`. Values a
 | `:oban` | Lite engine, PG notifier | Standalone engine and queue configuration |
 | `:prompts` | `[]` | Optional `path:` override; otherwise packaged `priv/prompts` |
 | `:telemetry` | `[capture_payloads: false]` | Emit payload hashes/sizes rather than payload bodies |
+| `:stage_timeout` | 15 minutes | Milliseconds Oban lets one pipeline stage attempt run before killing it |
 
 `Neuron.Repo` uses SQLite, pool size 5, WAL mode, and a 15-second busy timeout. `NEURON_DATABASE` selects the path (default `neuron.db` outside production). The directory must exist and be writable. SQLite and its associated WAL files belong to the same persistent volume.
 
@@ -87,7 +88,7 @@ Result links in a rendered results page are the engine's own tracking redirects,
 
 Interaction-heavy pages (LinkedIn, X, Reddit, and other rendered feeds, configurable through `:neuron, :browser, :rich_hosts`) are never snapshotted whole: a bundled Turndown build is injected in the browser, and only the cleaned main section travels back as Markdown — both for search transcripts and for ingested source documents.
 
-A direct fetch navigates and then waits for the page to settle, within `timeout:` if the caller gave one, otherwise the fleet's `timeout`. A page that never settles is `{:error, :page_not_ready}`, and a browser call that runs past its own deadline is `{:error, {:browser_use_timeout, _}}` rather than an exit that kills the caller.
+A direct fetch navigates and then waits for the page to settle, within `timeout:` if the caller gave one, otherwise the fleet's `timeout`. The whole fetch, from creating the browser to reading the page, is bounded by `fetch_timeout:` if the caller gave one, otherwise `:neuron, :browser, :browser_use, :fetch_timeout` (90 seconds); past it the fetch is killed and returns `{:error, :browser_use_timeout}`, and a browser already registered for cleanup is still stopped. One killed between creation and registration runs until `sweep/1` stops it. A page that never settles is `{:error, :page_not_ready}`, and a browser call that runs past its own deadline is `{:error, {:browser_use_timeout, _}}` rather than an exit that kills the caller.
 
 Campaign searches run as one fleet wave: `sessions` Browser Use cloud sessions each multiplex `pages_per_session` concurrent tabs, so concurrency scales with pages rather than browser count — 1 x 4 = 4 concurrent pages by default. One sub-agent controls each page and returns a transcript (final URL, title, text, links); the model then harvests prospect URLs from the transcripts, and every harvested URL must literally appear in its transcript. `:neuron, :browser, :fleet` accepts `sessions`, `pages_per_session`, and `timeout`.
 

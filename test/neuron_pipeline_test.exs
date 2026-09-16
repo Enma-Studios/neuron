@@ -8,6 +8,12 @@ defmodule Neuron.PipelineTest do
     def stage(:second, %{checkpoint: true} = data, _), do: {:ok, data}
   end
 
+  defmodule Waiting do
+    def plan(input, _), do: {:ok, input}
+    def stages, do: [:collect]
+    def stage(:collect, _data, _), do: {:wait, 1}
+  end
+
   test "pipeline checkpoints one stage per job" do
     {:ok, id} = Neuron.start_run(Profile, %{leads: [%{name: "Ada"}]})
     Oban.drain_queue(Neuron.Oban, queue: :agents)
@@ -19,6 +25,38 @@ defmodule Neuron.PipelineTest do
 
     Oban.drain_queue(Neuron.Oban, queue: :agents)
     assert %{status: :complete, leads: [%{name: "Ada"}]} = Neuron.get_run(id)
+  end
+
+  test "a stage re-entered after a wait emits :wait, not a stage span" do
+    events = [[:neuron, :start, :pipeline, :stage], [:neuron, :pipeline, :stage, :wait]]
+    handler = "stage-wait-#{System.unique_integer()}"
+    test = self()
+
+    :telemetry.attach_many(
+      handler,
+      events,
+      fn event, _, metadata, _ -> send(test, {:telemetry, event, metadata}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    {:ok, id} = Neuron.start_run(Waiting, %{})
+    Oban.drain_queue(Neuron.Oban, queue: :agents)
+    machine = Neuron.FSM.get(id)
+    job = %Oban.Job{args: %{"machine_id" => id, "version" => machine.version}}
+
+    # A first entry is a stage start.
+    assert {:snooze, 1} = Neuron.StageWorker.perform(job)
+    assert_receive {:telemetry, [:neuron, :start, :pipeline, :stage], %{run_id: ^id}}
+    refute_receive {:telemetry, [:neuron, :pipeline, :stage, :wait], _}
+
+    # Oban counts snoozes in the job's meta. A re-entry is a poll, and a host
+    # counting stage starts must not count it.
+    assert {:snooze, 1} = Neuron.StageWorker.perform(%{job | meta: %{"snoozed" => 1}})
+    assert_receive {:telemetry, [:neuron, :pipeline, :stage, :wait], %{run_id: ^id}}
+    refute_receive {:telemetry, [:neuron, :start, :pipeline, :stage], _}
+    Neuron.cancel_run(id)
   end
 
   test "pipeline supervision stops when its owning job is killed" do

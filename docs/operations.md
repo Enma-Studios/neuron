@@ -28,6 +28,7 @@ Attach ordinary consumers with `:telemetry.attach_many/4`. Neuron installs no cu
     [:neuron, :start, :pipeline, :stage],
     [:neuron, :stop, :pipeline, :stage],
     [:neuron, :exception, :pipeline, :stage],
+    [:neuron, :pipeline, :stage, :wait],
     [:neuron, :browser, :attempt],
     [:neuron, :browser, :blocked],
     [:neuron, :research, :source_failed],
@@ -41,7 +42,7 @@ Attach ordinary consumers with `:telemetry.attach_many/4`. Neuron installs no cu
 )
 ```
 
-The default Ecto repo emits `[:neuron, :repo, :query]`; a host repo uses its own telemetry prefix. Oban reports job timing, attempts, exceptions, and its own queue/service events. Neuron reports transition versions, run/task IDs, stage names, browser attempts/failures, search results, prompt rendering, model decisions, embeddings, snapshots, and graph queries/writes. Span durations use Erlang native time units. Stop events mark completion of the function, including a returned error; exceptions have their own event.
+The default Ecto repo emits `[:neuron, :repo, :query]`; a host repo uses its own telemetry prefix. Oban reports job timing, attempts, exceptions, and its own queue/service events. Neuron reports transition versions, run/task IDs, stage names, browser attempts/failures, search results, prompt rendering, model decisions, embeddings, snapshots, and graph queries/writes. Span durations use Erlang native time units. Stop events mark completion of the function, including a returned error; exceptions have their own event. A stage that returned `{:wait, seconds}` and is polled again emits `[:neuron, :pipeline, :stage, :wait]` (with `snoozed`, the poll count) instead of a new span, so stage starts count stages rather than polls.
 
 Run options contain a stable trace ID; run and task IDs correlate source/model activity. By default large telemetry payloads are summarized as hashes and byte sizes. `capture_payloads: true` is explicit. Business selection reasons belong in lead results; telemetry is not a promise to expose a model's private internal reasoning.
 

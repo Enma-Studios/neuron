@@ -20,7 +20,9 @@ if config_env() == :prod do
     browser: [
       fleet: [
         sessions: String.to_integer(System.get_env("NEURON_FLEET_SESSIONS", "1")),
-        pages_per_session: String.to_integer(System.get_env("NEURON_FLEET_PAGES", "4"))
+        pages_per_session: String.to_integer(System.get_env("NEURON_FLEET_PAGES", "4")),
+        # Restated because this block replaces the one in config.exs whole.
+        timeout: 45_000
       ],
       browser_use: [
         api_key: System.get_env("BROWSER_USE_API_KEY"),
