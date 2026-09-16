@@ -28,7 +28,8 @@ defmodule Neuron.Run do
 end
 
 defmodule Neuron.RunWorker do
-  use Oban.Worker, queue: :orchestrators, max_attempts: 5
+  # Planning makes a model call (campaign intake reads the seller page).
+  use Oban.Worker, queue: :orchestrators, max_attempts: 3
 
   def perform(%Oban.Job{args: %{"machine_id" => id, "version" => version}} = job) do
     machine = Neuron.FSM.get(id)
@@ -72,19 +73,25 @@ defmodule Neuron.RunWorker do
           {:error, reason}
 
         {:error, reason} ->
-          advance(id, version, :failed, %{error: reason})
+          advance(id, version, :failed, %{error: reason, exhausted: exhausted(machine, job)})
       end
     else
       :ok
     end
   rescue
     error ->
-      if job.attempt == job.max_attempts do
-        advance(id, version, :failed, %{error: Exception.format(:error, error, __STACKTRACE__)})
+      if job.attempt >= job.max_attempts do
+        advance(id, version, :failed, %{
+          error: Exception.format(:error, error, __STACKTRACE__),
+          exhausted: %{stage: :planning, attempts: job.attempt}
+        })
       end
 
       reraise error, __STACKTRACE__
   end
+
+  defp exhausted(machine, job),
+    do: %{stage: String.to_existing_atom(machine.state), attempts: job.attempt}
 
   def advance(id, version, event, payload) do
     case Neuron.FSM.send(id, event, payload, version: version) do
@@ -97,7 +104,19 @@ end
 
 defmodule Neuron.StageWorker do
   @moduledoc "Executes one checkpointed pipeline stage per Oban job."
-  use Oban.Worker, queue: :agents, max_attempts: 5
+  use Oban.Worker, queue: :agents, max_attempts: 3
+
+  # A failed attempt mostly fails again, and a campaign's collect waits on
+  # every one: one child's normalize took five attempts and 22 minutes to
+  # fail. Stages that call a model get one more try for a transient
+  # provider error; everything else gets two.
+  # ponytail: keyed by stage name across every profile; move to a profile
+  # callback if two profiles ever give one name different work.
+  @model_stages ~w(prepare plan_search search draft normalize extract enrich)a
+
+  @doc "How many attempts `stage` gets before its run fails."
+  def attempts(stage) when stage in @model_stages, do: 3
+  def attempts(_stage), do: 2
 
   # The backstop behind each stage's own bounds: without it Oban lets a stuck
   # attempt run forever, and the stage is never retried or failed.
@@ -161,26 +180,36 @@ defmodule Neuron.StageWorker do
             stage_index: index
           })
 
-        {:error, reason} when job.attempt < job.max_attempts ->
-          {:error, reason}
-
         {:error, reason} ->
-          Neuron.RunWorker.advance(id, version, :failed, %{error: reason})
+          if job.attempt < attempts(stage),
+            do: {:error, reason},
+            else: exhaust(id, version, stage, job, reason)
       end
     end
   rescue
     error ->
-      if job.attempt == job.max_attempts do
-        Neuron.RunWorker.advance(id, version, :failed, %{
-          error: Exception.format(:error, error, __STACKTRACE__)
-        })
-      end
+      stage = current_stage(id)
+
+      if job.attempt >= attempts(stage),
+        do: exhaust(id, version, stage, job, Exception.format(:error, error, __STACKTRACE__))
 
       reraise error, __STACKTRACE__
+  end
+
+  defp exhaust(id, version, stage, job, reason) do
+    Neuron.RunWorker.advance(id, version, :failed, %{
+      error: reason,
+      exhausted: %{stage: stage, attempts: job.attempt}
+    })
+  end
+
+  defp current_stage(id) do
+    data = id |> Neuron.FSM.get() |> Neuron.FSM.data()
+    Enum.fetch!(data.profile.stages(), data.stage_index)
   end
 end
 
 defmodule Neuron.PipelinePlanner do
-  use Oban.Worker, queue: :agents, max_attempts: 5
+  use Oban.Worker, queue: :agents, max_attempts: 3
   defdelegate perform(job), to: Neuron.RunWorker
 end

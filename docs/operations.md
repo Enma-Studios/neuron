@@ -8,7 +8,7 @@ Use normal OTP shutdown for the release or `Application.stop(:neuron)` for a man
 
 ## Retries, cancellation, and recovery
 
-Each built-in worker permits five attempts. Transient returned errors are Oban failures, and exceptions are re-raised. On the final ordinary error/exception the machine is marked failed. `Neuron.resume_run(id)` preserves a failed pipeline's stage index and checkpoint. A normal coordinator replans on retry.
+A stage that calls a model (`prepare`, `plan_search`, `search`, `draft`, `normalize`, `extract`, `enrich`) and planning get three attempts; `fetch` and every other stage get two. When a stage runs out, the failed run carries `exhausted: %{stage, attempts}` alongside `error`, and resuming clears it. Transient returned errors are Oban failures, and exceptions are re-raised. On the final ordinary error/exception the machine is marked failed. `Neuron.resume_run(id)` preserves a failed pipeline's stage index and checkpoint. A normal coordinator replans on retry.
 
 Lifeline rescues orphaned executing jobs after the configured interval. Because it uses elapsed time, configure `rescue_after` above valid job duration. A killed final attempt may become a discarded Oban job without running Neuron's error handler. `get_run/1`, `resume_run/1`, and `reconcile_run/1` detect a discarded or externally cancelled current-version worker and atomically mark its run failed. Keep Oban's job retention longer than the interval at which you inspect/reconcile such runs.
 
