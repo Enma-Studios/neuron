@@ -26,13 +26,13 @@ defmodule Neuron.CompanyListTest do
     assert {:ok, campaign} =
              Neuron.Campaign.normalize_campaign(Map.put(@answers, :companies, @companies))
 
-    assert campaign.companies == ["quillmark.example", "lumenglobal.io"]
+    assert campaign.companies == ["quillmark.example", "ledgerwell.example"]
   end
 
   test "an entry that is not a company domain is rejected, naming it" do
-    assert {:error, {:invalid_company, "Lumen Global"}} =
+    assert {:error, {:invalid_company, "Ledgerwell"}} =
              Neuron.Campaign.normalize_campaign(
-               Map.put(@answers, :companies, ["quillmark.example", "Lumen Global"])
+               Map.put(@answers, :companies, ["quillmark.example", "Ledgerwell"])
              )
   end
 
@@ -68,19 +68,19 @@ defmodule Neuron.CompanyListTest do
 
     assert Enum.map(data.pending_children, & &1.source.url) == [
              "https://quillmark.example",
-             "https://lumenglobal.io"
+             "https://ledgerwell.example"
            ]
   end
 
   defmodule Browser do
-    # The listed companies' real pages; every other path is a 404 that
-    # names nobody, as lumenglobal.io's people paths are.
+    # The listed companies' rebuilt pages; every other path is a 404 that
+    # names nobody, as ledgerwell.example's people paths are.
     def fetch(url, _opts) do
       page =
         case url do
           "https://quillmark.example" -> "quillmark-home"
           "https://quillmark.example/team" -> "quillmark-team"
-          "https://lumenglobal.io" -> "lumenglobal-home"
+          "https://ledgerwell.example" -> "ledgerwell-home"
           _ -> nil
         end
 
@@ -178,8 +178,8 @@ defmodule Neuron.CompanyListTest do
 
       people_pages = run.result.people_pages
       assert people_pages["quillmark.example"].found == "https://quillmark.example/team"
-      assert people_pages["lumenglobal.io"].found == nil
-      assert people_pages["lumenglobal.io"].probes == 3
+      assert people_pages["ledgerwell.example"].found == nil
+      assert people_pages["ledgerwell.example"].probes == 3
 
       names = Enum.map(run.result.leads, & &1.person_name)
       assert "Mira Talvik" in names
