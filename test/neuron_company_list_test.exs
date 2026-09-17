@@ -114,7 +114,13 @@ defmodule Neuron.CompanyListTest do
               leads:
                 for(
                   [id] <- Enum.uniq(ids),
-                  do: %{person_id: id, reason: "Named on the company's own team page"}
+                  do: %{
+                    person_id: id,
+                    reason: "Named on the company's own team page",
+                    channel: "email",
+                    subject: "Security assessments",
+                    body: "A short note about offensive security assessments."
+                  }
                 )
             }
 
@@ -139,15 +145,27 @@ defmodule Neuron.CompanyListTest do
             {"title", title, title},
             {"employer", "quillmark.example", "### #{name}"}
           ] do
-        %{
-          entity_type: "Person",
-          identity: name,
-          predicate: predicate,
-          value: value,
-          excerpt: excerpt,
-          source_url: "https://quillmark.example/team"
-        }
-      end
+        claim(name, predicate, value, excerpt)
+      end ++
+        [
+          claim(
+            "Mira Talvik",
+            "email",
+            "mira.talvik@quillmark.example",
+            "mira.talvik@quillmark.example"
+          )
+        ]
+    end
+
+    defp claim(name, predicate, value, excerpt) do
+      %{
+        entity_type: "Person",
+        identity: name,
+        predicate: predicate,
+        value: value,
+        excerpt: excerpt,
+        source_url: "https://quillmark.example/team"
+      }
     end
   end
 
@@ -161,7 +179,7 @@ defmodule Neuron.CompanyListTest do
       :ok
     end
 
-    test "reads the listed companies' people pages and ranks their named leaders, without searching" do
+    defp run_company_list do
       {:ok, id} =
         Neuron.start_run(Neuron.Coordinator.Campaign, %{approved_campaign: campaign()},
           model_provider: Model,
@@ -169,7 +187,11 @@ defmodule Neuron.CompanyListTest do
           require_contact_channel: false
         )
 
-      run = drain(id)
+      drain(id)
+    end
+
+    test "reads the listed companies' people pages and ranks their named leaders, without searching" do
+      run = run_company_list()
 
       assert run.status == :complete,
              inspect(Map.take(run, [:error, :exhausted, :stage_index]), printable_limit: 2000)
@@ -186,6 +208,49 @@ defmodule Neuron.CompanyListTest do
       assert "Tobin Draszek" in names
       refute "Aldo Veskari" in names
       assert run.result.stop_reason in [:companies_exhausted, :target_met]
+    end
+
+    # neureni#349: the host keeps a capture of each page behind a claim or an
+    # address and checks every excerpt against its bytes.
+    test "carries the retained page behind every claim and contact channel, and no other page" do
+      run = run_company_list()
+      assert run.status == :complete, inspect(Map.take(run, [:error, :stage_index]))
+
+      leads = run.result.leads
+      captures = run.result.captures
+
+      # The home pages were read and backed nothing, so only the team page.
+      assert Enum.map(captures, & &1.url) == ["https://quillmark.example/team"]
+
+      for capture <- captures do
+        assert capture.content_hash ==
+                 Base.encode16(:crypto.hash(:sha256, capture.markdown), case: :lower)
+
+        assert {:ok, _, _} = DateTime.from_iso8601(capture.retrieved_at)
+      end
+
+      pages = Map.new(captures, &{&1.content_hash, &1})
+
+      mira = Enum.find(leads, &(&1.person_name == "Mira Talvik"))
+
+      assert [%{kind: "email", value: "mira.talvik@quillmark.example"} = channel] =
+               mira.contact_channels
+
+      claims =
+        Enum.flat_map(leads, fn lead ->
+          lead.evidence ++ Enum.flat_map(lead.contact_channels, & &1.evidence)
+        end)
+
+      assert Enum.any?(claims, &(&1["predicate"] == "email"))
+
+      for claim <- claims do
+        page = Map.fetch!(pages, claim["content_hash"])
+        assert page.url == claim["url"]
+        assert :binary.match(page.markdown, claim["excerpt"]) != :nomatch
+      end
+
+      for url <- channel.evidence_urls, do: assert(Enum.any?(captures, &(&1.url == url)))
+      assert :binary.match(hd(captures).markdown, channel.value) != :nomatch
     end
   end
 
