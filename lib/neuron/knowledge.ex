@@ -109,7 +109,16 @@ defmodule Neuron.Knowledge do
       )
 
     with :ok <- Neuron.Graph.insert_once(snapshot, opts),
-         :ok <- Neuron.Graph.upsert(Map.put(graph, "documents", [%{"uid" => snapshot_id}]), opts),
+         # When these bytes were last read, set on every read rather than
+         # inserted once: a later fetch of identical bytes is the same
+         # Snapshot, and one saved before this field existed gains it.
+         :ok <-
+           Neuron.Graph.upsert(
+             Map.put(graph, "documents", [
+               %{"uid" => snapshot_id, "fetched_at" => graph["fetched_at"]}
+             ]),
+             opts
+           ),
          do: {:ok, snapshot_id}
   end
 
@@ -512,6 +521,53 @@ defmodule Neuron.Knowledge do
       {predicate, winner}
     end)
   end
+
+  @doc """
+  The retained pages behind `claims`, once each in the order the claims
+  cite them: `%{url, retrieved_at, content_hash, markdown}` for every
+  Snapshot an observed claim was validated against, so each excerpt is a
+  slice of `markdown`. A claim with no document, such as a caller's own
+  assertion, is behind no page. `retrieved_at` is when those bytes were
+  last read, and `nil` for a Snapshot not read since Neuron v0.2.18.
+  """
+  def captures(claims, opts) do
+    ids =
+      claims
+      |> Enum.flat_map(&List.wrap(&1["documents"]))
+      |> Enum.map(& &1["external_id"])
+      |> Enum.uniq()
+
+    if ids == [] do
+      {:ok, []}
+    else
+      with {:ok, result} <-
+             Neuron.Graph.query(
+               "{ pages(func: eq(external_id, #{Jason.encode!(ids)})) { external_id url markdown content_hash fetched_at } }",
+               %{},
+               opts
+             ) do
+        pages = Map.new(Map.get(result, "pages", []), &{&1["external_id"], &1})
+
+        {:ok,
+         for id <- ids do
+           page = Map.fetch!(pages, id)
+
+           %{
+             url: page["url"],
+             retrieved_at: page["fetched_at"],
+             content_hash: page["content_hash"],
+             markdown: page["markdown"]
+           }
+         end}
+      end
+    end
+  end
+
+  @doc "A claim as a result carries it: its page named by `content_hash`."
+  def cite_page(%{"documents" => [document | _]} = claim),
+    do: claim |> Map.delete("documents") |> Map.put("content_hash", document["content_hash"])
+
+  def cite_page(claim), do: Map.delete(claim, "documents")
 
   def index_document(document, snapshot_id, opts) do
     Neuron.Embedding.provider().chunks(document.markdown)
