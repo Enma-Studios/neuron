@@ -306,7 +306,13 @@ defmodule Neuron.CampaignPipeline do
     with {:ok, output} <-
            Neuron.Structured.generate(
              "campaign_outreach.eex",
-             %{seller: inspect(data.campaign.seller_profile), leads: inspect(data.leads)},
+             %{
+               seller: inspect(data.campaign.seller_profile),
+               # Whole, and citing pages by hash: inspect's default limit
+               # cuts a list of leads with their evidence short, and the
+               # model cannot draft for a person it never saw.
+               leads: inspect(Enum.map(data.leads, &cite_pages/1), limit: :infinity)
+             },
              &validate_drafts(&1, data.leads),
              opts
            ) do
@@ -315,6 +321,17 @@ defmodule Neuron.CampaignPipeline do
   end
 
   def stage(:finish, data, opts) do
+    claims =
+      Enum.flat_map(data.leads, fn lead ->
+        lead.evidence ++ Enum.flat_map(lead.contact_channels, & &1.evidence)
+      end)
+
+    with {:ok, captures} <- Neuron.Knowledge.captures(claims, opts) do
+      finish(%{data | leads: Enum.map(data.leads, &cite_pages/1)}, captures, opts)
+    end
+  end
+
+  defp finish(data, captures, opts) do
     status =
       cond do
         data.leads == [] -> :no_qualified_leads
@@ -336,7 +353,10 @@ defmodule Neuron.CampaignPipeline do
       selection: data[:selection],
       rejected_sources: Map.get(data, :rejected_sources, []),
       role_signals: Map.get(data, :role_signals, []),
-      people_pages: Map.get(data, :people_pages, %{})
+      people_pages: Map.get(data, :people_pages, %{}),
+      # The pages behind every claim and contact channel in `leads`, and no
+      # other, so a host can check each excerpt against the bytes (#95).
+      captures: captures
     }
 
     with {:ok, _} <- Neuron.Schemas.validate_campaign_result(result),
@@ -394,6 +414,21 @@ defmodule Neuron.CampaignPipeline do
       },
       opts
     )
+  end
+
+  defp cite_pages(lead) do
+    %{
+      lead
+      | evidence: Enum.map(lead.evidence, &Neuron.Knowledge.cite_page/1),
+        contact_channels:
+          Enum.map(lead.contact_channels, fn channel ->
+            Map.update!(
+              channel,
+              :evidence,
+              &Enum.map(&1, fn c -> Neuron.Knowledge.cite_page(c) end)
+            )
+          end)
+    }
   end
 
   # The latest pass's accounting, kept on the run so a host can tell a run

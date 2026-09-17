@@ -3,14 +3,15 @@ set -euo pipefail
 
 container_name="${NEURON_DGRAPH_CONTAINER:-neuron-dgraph-test-$$}"
 image="${NEURON_DGRAPH_IMAGE:-docker.io/dgraph/standalone:v25.4.0}"
+runtime="${NEURON_CONTAINER_RUNTIME:-podman}"
 
 cleanup() {
-  podman rm --force "$container_name" >/dev/null 2>&1 || true
+  "$runtime" rm --force "$container_name" >/dev/null 2>&1 || true
 }
 
 trap cleanup EXIT
 
-podman run --detach \
+"$runtime" run --detach \
   --name "$container_name" \
   --publish "${NEURON_DGRAPH_HTTP_PORT:-18080}:8080" \
   --publish "${NEURON_DGRAPH_GRPC_PORT:-19080}:9080" \

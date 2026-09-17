@@ -185,10 +185,8 @@ being in it, and a file that belongs in the repository still goes through a pull
 - A capture carries its source URL and capture date in a fixture note beside it.
 - Synthetic fixture data is allowed where a real run cannot produce one, and is marked synthetic
   in the first line of the file or its note.
-- Three fixtures predate this section and are whole pages that name nobody:
-  `test/fixtures/nyx-labs.html`, `test/fixtures/people_pages/lumenglobal-home.html` and
-  `test/fixtures/people_pages/lumenglobal-contact-us.md`. Replacing them is #93. No new fixture
-  follows their shape.
+- One fixture predates this section and is a whole page that names nobody:
+  `test/fixtures/nyx-labs.html`. Replacing it is #93. No new fixture follows its shape.
 
 ## 8. Decision discipline
 

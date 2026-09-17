@@ -26,13 +26,13 @@ defmodule Neuron.CompanyListTest do
     assert {:ok, campaign} =
              Neuron.Campaign.normalize_campaign(Map.put(@answers, :companies, @companies))
 
-    assert campaign.companies == ["quillmark.example", "lumenglobal.io"]
+    assert campaign.companies == ["quillmark.example", "ledgerwell.example"]
   end
 
   test "an entry that is not a company domain is rejected, naming it" do
-    assert {:error, {:invalid_company, "Lumen Global"}} =
+    assert {:error, {:invalid_company, "Ledgerwell"}} =
              Neuron.Campaign.normalize_campaign(
-               Map.put(@answers, :companies, ["quillmark.example", "Lumen Global"])
+               Map.put(@answers, :companies, ["quillmark.example", "Ledgerwell"])
              )
   end
 
@@ -68,19 +68,19 @@ defmodule Neuron.CompanyListTest do
 
     assert Enum.map(data.pending_children, & &1.source.url) == [
              "https://quillmark.example",
-             "https://lumenglobal.io"
+             "https://ledgerwell.example"
            ]
   end
 
   defmodule Browser do
-    # The listed companies' real pages; every other path is a 404 that
-    # names nobody, as lumenglobal.io's people paths are.
+    # The listed companies' rebuilt pages; every other path is a 404 that
+    # names nobody, as ledgerwell.example's people paths are.
     def fetch(url, _opts) do
       page =
         case url do
           "https://quillmark.example" -> "quillmark-home"
           "https://quillmark.example/team" -> "quillmark-team"
-          "https://lumenglobal.io" -> "lumenglobal-home"
+          "https://ledgerwell.example" -> "ledgerwell-home"
           _ -> nil
         end
 
@@ -114,7 +114,13 @@ defmodule Neuron.CompanyListTest do
               leads:
                 for(
                   [id] <- Enum.uniq(ids),
-                  do: %{person_id: id, reason: "Named on the company's own team page"}
+                  do: %{
+                    person_id: id,
+                    reason: "Named on the company's own team page",
+                    channel: "email",
+                    subject: "Security assessments",
+                    body: "A short note about offensive security assessments."
+                  }
                 )
             }
 
@@ -139,15 +145,27 @@ defmodule Neuron.CompanyListTest do
             {"title", title, title},
             {"employer", "quillmark.example", "### #{name}"}
           ] do
-        %{
-          entity_type: "Person",
-          identity: name,
-          predicate: predicate,
-          value: value,
-          excerpt: excerpt,
-          source_url: "https://quillmark.example/team"
-        }
-      end
+        claim(name, predicate, value, excerpt)
+      end ++
+        [
+          claim(
+            "Mira Talvik",
+            "email",
+            "mira.talvik@quillmark.example",
+            "mira.talvik@quillmark.example"
+          )
+        ]
+    end
+
+    defp claim(name, predicate, value, excerpt) do
+      %{
+        entity_type: "Person",
+        identity: name,
+        predicate: predicate,
+        value: value,
+        excerpt: excerpt,
+        source_url: "https://quillmark.example/team"
+      }
     end
   end
 
@@ -161,7 +179,7 @@ defmodule Neuron.CompanyListTest do
       :ok
     end
 
-    test "reads the listed companies' people pages and ranks their named leaders, without searching" do
+    defp run_company_list do
       {:ok, id} =
         Neuron.start_run(Neuron.Coordinator.Campaign, %{approved_campaign: campaign()},
           model_provider: Model,
@@ -169,7 +187,11 @@ defmodule Neuron.CompanyListTest do
           require_contact_channel: false
         )
 
-      run = drain(id)
+      drain(id)
+    end
+
+    test "reads the listed companies' people pages and ranks their named leaders, without searching" do
+      run = run_company_list()
 
       assert run.status == :complete,
              inspect(Map.take(run, [:error, :exhausted, :stage_index]), printable_limit: 2000)
@@ -178,14 +200,66 @@ defmodule Neuron.CompanyListTest do
 
       people_pages = run.result.people_pages
       assert people_pages["quillmark.example"].found == "https://quillmark.example/team"
-      assert people_pages["lumenglobal.io"].found == nil
-      assert people_pages["lumenglobal.io"].probes == 3
+      assert people_pages["ledgerwell.example"].found == nil
+      assert people_pages["ledgerwell.example"].probes == 3
 
       names = Enum.map(run.result.leads, & &1.person_name)
       assert "Mira Talvik" in names
       assert "Tobin Draszek" in names
       refute "Aldo Veskari" in names
       assert run.result.stop_reason in [:companies_exhausted, :target_met]
+    end
+
+    # neureni#349: the host keeps a capture of each page behind a claim or an
+    # address and checks every excerpt against its bytes.
+    test "carries the retained page behind every claim and contact channel, and no other page" do
+      run = run_company_list()
+      assert run.status == :complete, inspect(Map.take(run, [:error, :stage_index]))
+
+      leads = run.result.leads
+      captures = run.result.captures
+
+      mira = Enum.find(leads, &(&1.person_name == "Mira Talvik"))
+
+      assert [%{kind: "email", value: "mira.talvik@quillmark.example"} = channel] =
+               mira.contact_channels
+
+      claims =
+        Enum.flat_map(leads, fn lead ->
+          lead.evidence ++ Enum.flat_map(lead.contact_channels, & &1.evidence)
+        end)
+
+      # Exactly the pages the result's claims cite, once each. The graph is
+      # shared, so other companies' leads may bring their own pages.
+      cited = MapSet.new(claims, &{&1["url"], &1["content_hash"]})
+      assert MapSet.new(captures, &{&1.url, &1.content_hash}) == cited
+      assert length(captures) == MapSet.size(cited)
+      assert Enum.any?(captures, &(&1.url == "https://quillmark.example/team"))
+
+      # The home pages were read in this run and backed nothing.
+      for home <- ["https://quillmark.example", "https://ledgerwell.example"],
+          do: refute(Enum.any?(captures, &(&1.url == home)))
+
+      for capture <- captures do
+        assert capture.content_hash ==
+                 Base.encode16(:crypto.hash(:sha256, capture.markdown), case: :lower)
+
+        assert {:ok, _, _} = DateTime.from_iso8601(capture.retrieved_at)
+      end
+
+      pages = Map.new(captures, &{{&1.url, &1.content_hash}, &1})
+
+      for claim <- claims do
+        page = Map.fetch!(pages, {claim["url"], claim["content_hash"]})
+        assert :binary.match(page.markdown, claim["excerpt"]) != :nomatch
+      end
+
+      # The address is in the bytes of the page its channel names.
+      assert [%{"predicate" => "email"} = email_claim] = channel.evidence
+      assert email_claim["claim_value"] == channel.value
+      assert email_claim["url"] in channel.evidence_urls
+      page = Map.fetch!(pages, {email_claim["url"], email_claim["content_hash"]})
+      assert :binary.match(page.markdown, channel.value) != :nomatch
     end
   end
 

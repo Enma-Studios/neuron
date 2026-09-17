@@ -49,13 +49,13 @@ defmodule Neuron.Selection do
            ),
          {:ok, lexical} <-
            Neuron.Graph.query(
-             "query candidates($q: string, $space: string) { results(func: anyoftext(knowledge_text, $q), first: 200) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } employer { name description industry knowledge_json } } }",
+             "query candidates($q: string, $space: string) { results(func: anyoftext(knowledge_text, $q), first: 200) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind documents { external_id content_hash } } employer { name description industry knowledge_json } } }",
              %{"$q" => query, "$space" => Neuron.Embedding.space()},
              opts
            ),
          {:ok, semantic} <-
            Neuron.Graph.query(
-             "query candidates($v: float32vector, $space: string) { results(func: similar_to(#{Neuron.Embedding.field()}, 200, $v)) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind } employer { name description industry knowledge_json } } }",
+             "query candidates($v: float32vector, $space: string) { results(func: similar_to(#{Neuron.Embedding.field()}, 200, $v)) @filter(type(Person) AND eq(embedding_space, $space)) { uid external_id profile_url #{Neuron.Embedding.field()} assertions { uid predicate claim_value excerpt url observed_at authority assertion_kind documents { external_id content_hash } } employer { name description industry knowledge_json } } }",
              %{"$v" => vector, "$space" => Neuron.Embedding.space()},
              opts
            ) do
@@ -185,7 +185,14 @@ defmodule Neuron.Selection do
 
     email_channels =
       if verified_email,
-        do: [%{kind: "email", value: email, evidence_urls: [email_claim["url"]]}],
+        do: [
+          %{
+            kind: "email",
+            value: email,
+            evidence_urls: [email_claim["url"]],
+            evidence: [email_claim]
+          }
+        ],
         else: []
 
     channels = email_channels ++ social_channels
@@ -330,7 +337,8 @@ defmodule Neuron.Selection do
       %{
         kind: kind,
         value: url,
-        evidence_urls: [profile_claim["url"]]
+        evidence_urls: [profile_claim["url"]],
+        evidence: [profile_claim]
       }
     end)
     |> Enum.sort_by(&channel_rank(&1.kind))

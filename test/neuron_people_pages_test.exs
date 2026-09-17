@@ -4,20 +4,12 @@ defmodule Neuron.PeoplePagesTest do
 
   alias Neuron.PeoplePages
 
-  # Run ea7f7407 (#84) read contact pages. lumenglobal.io's names six roles
-  # and no people, and the site has no page that names anyone: every people
-  # path 404s. Another of the run's companies links "Meet the team" from its
-  # contact page, and that page names its leaders with titles; its pages are
-  # rebuilt with a pseudonymous company and people, titles and links kept.
-  # lumenglobal.io's pages name nobody and are kept as captured.
-  @lumen_url "https://lumenglobal.io/contact-us"
-  @lumen_markdown File.read!("test/fixtures/people_pages/lumenglobal-contact-us.md")
-  # The six role claims the run extracted from that page, as the graph held
-  # them, each re-keyed by a stable fixture identity.
-  @lumen_claims "test/fixtures/people_pages/ea7f7407_lumenglobal_claims.json"
-                |> File.read!()
-                |> Jason.decode!()
-
+  # Run ea7f7407 (#84) read contact pages. One company's names six roles and
+  # no people, and the site has no page that names anyone: every people path
+  # 404s. Another links "Meet the team" from its contact page, and that page
+  # names its leaders with titles. Both are rebuilt with pseudonymous
+  # companies and people, titles and links kept (#90, #95).
+  @ledgerwell_url "https://ledgerwell.example/contact-us"
   @quillmark_contact "https://quillmark.example/contact"
   @quillmark_team "https://quillmark.example/team"
 
@@ -30,6 +22,40 @@ defmodule Neuron.PeoplePagesTest do
     snapshot.markdown
   end
 
+  defp ledgerwell_markdown, do: markdown("ledgerwell-contact-us", @ledgerwell_url)
+
+  # The six role claims extraction gives for that page, each keyed by a
+  # stable identity on it: a title, and a description that also states the
+  # employer.
+  def ledgerwell_claims do
+    roles = [
+      {"CEO", "Leads Ledgerwell's strategy and partnerships across its payments products."},
+      {"COO", "Runs day-to-day operations and the delivery of client programmes."},
+      {"VP of Engineering (FrontEnd)",
+       "Leads the dashboard and onboarding experience clients use every day."},
+      {"VP of Engineering (DevOps)", "Keeps the platform deployed, observed and secure."},
+      {"VP of Engineering (Backend)",
+       "Owns the ledger services and the APIs clients integrate with."},
+      {"Head of HR", "Builds the hiring process and the working culture of the company."}
+    ]
+
+    for {{title, description}, index} <- Enum.with_index(roles),
+        {predicate, value, excerpt} <- [
+          {"employer", "ledgerwell.example", description},
+          {"title", title, title},
+          {"description", description, description}
+        ] do
+      %{
+        "entity_type" => "Person",
+        "identity" => "#{@ledgerwell_url}#role-#{index}",
+        "predicate" => predicate,
+        "value" => value,
+        "excerpt" => excerpt,
+        "source_url" => @ledgerwell_url
+      }
+    end
+  end
+
   describe "people links" do
     test "a company page's links to its people pages are found, in page order" do
       assert PeoplePages.links(
@@ -40,14 +66,18 @@ defmodule Neuron.PeoplePagesTest do
     end
 
     test "a page with no people links gives none" do
-      assert PeoplePages.links(@lumen_url, @lumen_markdown) == []
+      assert PeoplePages.links(@ledgerwell_url, ledgerwell_markdown()) == []
     end
   end
 
   describe "a role with no name" do
     test "is a company role signal, not a person" do
-      document = %{url: @lumen_url, markdown: @lumen_markdown}
-      {:ok, claims} = Neuron.Knowledge.validate_claims(%{"claims" => @lumen_claims}, document)
+      document = %{url: @ledgerwell_url, markdown: ledgerwell_markdown()}
+
+      {:ok, claims} =
+        Neuron.Knowledge.validate_claims(%{"claims" => ledgerwell_claims()}, document)
+
+      assert length(claims) == 18
 
       {kept, signals} = Neuron.Knowledge.role_signals(claims, document)
 
@@ -63,8 +93,8 @@ defmodule Neuron.PeoplePagesTest do
              ]
 
       for signal <- signals do
-        assert signal.employer == "lumenglobal.io"
-        assert signal.source_url == @lumen_url
+        assert signal.employer == "ledgerwell.example"
+        assert signal.source_url == @ledgerwell_url
       end
     end
 
@@ -77,14 +107,14 @@ defmodule Neuron.PeoplePagesTest do
         "assertions" =>
           for {predicate, value} <- %{
                 "title" => "VP of Engineering (DevOps)",
-                "employer" => "lumenglobal.io"
+                "employer" => "ledgerwell.example"
               } do
             %{
               "uid" => "0x1#{predicate}",
               "predicate" => predicate,
               "claim_value" => value,
               "excerpt" => value,
-              "url" => @lumen_url,
+              "url" => @ledgerwell_url,
               "observed_at" => now,
               "authority" => 1.0,
               "assertion_kind" => "observed"
@@ -110,9 +140,9 @@ defmodule Neuron.PeoplePagesTest do
 
       assert selection.role_signals == [
                %{
-                 employer: "lumenglobal.io",
+                 employer: "ledgerwell.example",
                  title: "VP of Engineering (DevOps)",
-                 source_url: @lumen_url
+                 source_url: @ledgerwell_url
                }
              ]
     end
@@ -166,19 +196,19 @@ defmodule Neuron.PeoplePagesTest do
   defp urls_of(data), do: Enum.map(data.pending_children, & &1.source.url)
 
   test "each company's people page is found by the named people it yields, within a per-company cap" do
-    signals = [%{employer: "lumenglobal.io", title: "CEO", source_url: @lumen_url}]
+    signals = [%{employer: "ledgerwell.example", title: "CEO", source_url: @ledgerwell_url}]
 
     first = [
-      child(@lumen_url, %{role_signals: signals}),
+      child(@ledgerwell_url, %{role_signals: signals}),
       child(@quillmark_contact, %{
         people_links: ["https://quillmark.example/team", "https://quillmark.example/about-us"]
       })
     ]
 
-    fetched = [@lumen_url, @quillmark_contact]
+    fetched = [@ledgerwell_url, @quillmark_contact]
 
     # Neither contact page named anyone. quillmark.example's own link to its
-    # team page is tried first; lumenglobal.io links none, so the common
+    # team page is tried first; ledgerwell.example links none, so the common
     # paths are tried on its host.
     assert {:goto, :dispatch, next} =
              Neuron.CampaignPipeline.stage(:people_pages, data(first, fetched),
@@ -186,17 +216,17 @@ defmodule Neuron.PeoplePagesTest do
              )
 
     assert Enum.sort(urls_of(next)) == [
-             "https://lumenglobal.io/team",
+             "https://ledgerwell.example/team",
              "https://quillmark.example/team"
            ]
 
     assert next.role_signals == signals
 
     # quillmark.example/team names three people: found, and never probed again.
-    # lumenglobal.io/team is a 404 that names nobody: not a hit.
+    # ledgerwell.example/team is a 404 that names nobody: not a hit.
     second = [
       child("https://quillmark.example/team", %{named_people: 3}),
-      child("https://lumenglobal.io/team", %{})
+      child("https://ledgerwell.example/team", %{})
     ]
 
     fetched = fetched ++ urls_of(next)
@@ -208,9 +238,9 @@ defmodule Neuron.PeoplePagesTest do
                people_page_attempts: 3
              )
 
-    assert urls_of(next) == ["https://lumenglobal.io/about"]
+    assert urls_of(next) == ["https://ledgerwell.example/about"]
 
-    third = [child("https://lumenglobal.io/about", %{})]
+    third = [child("https://ledgerwell.example/about", %{})]
     fetched = fetched ++ urls_of(next)
 
     assert {:goto, :dispatch, next} =
@@ -220,11 +250,11 @@ defmodule Neuron.PeoplePagesTest do
                people_page_attempts: 3
              )
 
-    assert urls_of(next) == ["https://lumenglobal.io/about-us"]
+    assert urls_of(next) == ["https://ledgerwell.example/about-us"]
 
-    # Three probes and nobody named: lumenglobal.io is done, and the run
+    # Three probes and nobody named: ledgerwell.example is done, and the run
     # moves on to rank with what it has.
-    fourth = [child("https://lumenglobal.io/about-us", %{})]
+    fourth = [child("https://ledgerwell.example/about-us", %{})]
     fetched = fetched ++ urls_of(next)
 
     assert {:ok, done} =
@@ -236,8 +266,8 @@ defmodule Neuron.PeoplePagesTest do
 
     assert done.people_pages["quillmark.example"].found == "https://quillmark.example/team"
     assert done.people_pages["quillmark.example"].probes == 1
-    assert done.people_pages["lumenglobal.io"].found == nil
-    assert done.people_pages["lumenglobal.io"].probes == 3
+    assert done.people_pages["ledgerwell.example"].found == nil
+    assert done.people_pages["ledgerwell.example"].probes == 3
   end
 
   test "companies from anywhere can be given, not only those search found" do
@@ -253,17 +283,15 @@ defmodule Neuron.PeoplePagesTest do
 
   defmodule Model do
     # Claims shaped as extraction returns them for each fixture page: the
-    # run's own nameless roles for lumenglobal.io, and quillmark.example's
+    # run's own nameless roles for ledgerwell.example, and quillmark.example's
     # leaders by name on its own team page.
     def complete(messages, _opts) do
       [_, url] = Regex.run(~r/^Source: (\S+)$/m, List.last(messages).content)
 
       claims =
         case url do
-          "https://lumenglobal.io" <> _ ->
-            "test/fixtures/people_pages/ea7f7407_lumenglobal_claims.json"
-            |> File.read!()
-            |> Jason.decode!()
+          "https://ledgerwell.example" <> _ ->
+            Neuron.PeoplePagesTest.ledgerwell_claims()
 
           "https://quillmark.example/team" ->
             for {name, title} <- [
@@ -320,12 +348,12 @@ defmodule Neuron.PeoplePagesTest do
       result
     end
 
-    test "lumenglobal.io's contact page yields no people, and its six roles as signals" do
+    test "ledgerwell.example's contact page yields no people, and its six roles as signals" do
       result =
         ingest(%{
-          url: @lumen_url,
+          url: @ledgerwell_url,
           title: "Contact Us",
-          markdown: @lumen_markdown,
+          markdown: ledgerwell_markdown(),
           fetched_at: DateTime.utc_now()
         })
 
