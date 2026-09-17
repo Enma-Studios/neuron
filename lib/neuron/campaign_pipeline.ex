@@ -306,7 +306,13 @@ defmodule Neuron.CampaignPipeline do
     with {:ok, output} <-
            Neuron.Structured.generate(
              "campaign_outreach.eex",
-             %{seller: inspect(data.campaign.seller_profile), leads: inspect(data.leads)},
+             %{
+               seller: inspect(data.campaign.seller_profile),
+               # Whole, and citing pages by hash: inspect's default limit
+               # cuts a list of leads with their evidence short, and the
+               # model cannot draft for a person it never saw.
+               leads: inspect(Enum.map(data.leads, &cite_pages/1), limit: :infinity)
+             },
              &validate_drafts(&1, data.leads),
              opts
            ) do

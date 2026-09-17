@@ -219,18 +219,6 @@ defmodule Neuron.CompanyListTest do
       leads = run.result.leads
       captures = run.result.captures
 
-      # The home pages were read and backed nothing, so only the team page.
-      assert Enum.map(captures, & &1.url) == ["https://quillmark.example/team"]
-
-      for capture <- captures do
-        assert capture.content_hash ==
-                 Base.encode16(:crypto.hash(:sha256, capture.markdown), case: :lower)
-
-        assert {:ok, _, _} = DateTime.from_iso8601(capture.retrieved_at)
-      end
-
-      pages = Map.new(captures, &{&1.content_hash, &1})
-
       mira = Enum.find(leads, &(&1.person_name == "Mira Talvik"))
 
       assert [%{kind: "email", value: "mira.talvik@quillmark.example"} = channel] =
@@ -241,17 +229,36 @@ defmodule Neuron.CompanyListTest do
           lead.evidence ++ Enum.flat_map(lead.contact_channels, & &1.evidence)
         end)
 
+      # Exactly the pages the result's claims cite, once each. The graph is
+      # shared, so other companies' leads may bring their own pages.
+      cited = MapSet.new(claims, &{&1["url"], &1["content_hash"]})
+      assert MapSet.new(captures, &{&1.url, &1.content_hash}) == cited
+      assert length(captures) == MapSet.size(cited)
+      assert Enum.any?(captures, &(&1.url == "https://quillmark.example/team"))
+
+      # The home pages were read in this run and backed nothing.
+      for home <- ["https://quillmark.example", "https://ledgerwell.example"],
+          do: refute(Enum.any?(captures, &(&1.url == home)))
+
+      for capture <- captures do
+        assert capture.content_hash ==
+                 Base.encode16(:crypto.hash(:sha256, capture.markdown), case: :lower)
+
+        assert {:ok, _, _} = DateTime.from_iso8601(capture.retrieved_at)
+      end
+
+      pages = Map.new(captures, &{{&1.url, &1.content_hash}, &1})
+
       for claim <- claims do
-        page = Map.fetch!(pages, claim["content_hash"])
-        assert page.url == claim["url"]
+        page = Map.fetch!(pages, {claim["url"], claim["content_hash"]})
         assert :binary.match(page.markdown, claim["excerpt"]) != :nomatch
       end
 
       # The address is in the bytes of the page its channel names.
       assert [%{"predicate" => "email"} = email_claim] = channel.evidence
       assert email_claim["claim_value"] == channel.value
-      page = Map.fetch!(pages, email_claim["content_hash"])
-      assert page.url in channel.evidence_urls
+      assert email_claim["url"] in channel.evidence_urls
+      page = Map.fetch!(pages, {email_claim["url"], email_claim["content_hash"]})
       assert :binary.match(page.markdown, channel.value) != :nomatch
     end
   end
