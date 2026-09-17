@@ -241,16 +241,18 @@ defmodule Neuron.CompanyListTest do
           lead.evidence ++ Enum.flat_map(lead.contact_channels, & &1.evidence)
         end)
 
-      assert Enum.any?(claims, &(&1["predicate"] == "email"))
-
       for claim <- claims do
         page = Map.fetch!(pages, claim["content_hash"])
         assert page.url == claim["url"]
         assert :binary.match(page.markdown, claim["excerpt"]) != :nomatch
       end
 
-      for url <- channel.evidence_urls, do: assert(Enum.any?(captures, &(&1.url == url)))
-      assert :binary.match(hd(captures).markdown, channel.value) != :nomatch
+      # The address is in the bytes of the page its channel names.
+      assert [%{"predicate" => "email"} = email_claim] = channel.evidence
+      assert email_claim["claim_value"] == channel.value
+      page = Map.fetch!(pages, email_claim["content_hash"])
+      assert page.url in channel.evidence_urls
+      assert :binary.match(page.markdown, channel.value) != :nomatch
     end
   end
 
