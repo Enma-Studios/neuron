@@ -10,3 +10,5 @@ mise.local.toml
 
 .env
 .env.*
+
+/.claude/worktrees/
